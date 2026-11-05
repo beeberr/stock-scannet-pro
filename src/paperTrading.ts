@@ -89,7 +89,7 @@ export function loadAccounts(raw: string | null): PaperAccount[] {
 export function executeTrade(account: PaperAccount, input: TradeInput): { account: PaperAccount; realizedPnl: number } {
   const symbol = input.symbol.trim().toUpperCase();
   const quantity = quantityRound(input.quantity);
-  const price = money(input.price);
+  const price = Math.round(input.price * 1e6) / 1e6;
   const fees = money(input.fees ?? 0);
   const financing = money(input.financing ?? 0);
   if (!symbol) throw new Error('יש להזין סימול נכס');
@@ -109,7 +109,7 @@ export function executeTrade(account: PaperAccount, input: TradeInput): { accoun
     const debit = money(gross + charges);
     if (debit > account.cash + 1e-8) throw new Error('אין יתרת מזומן מספקת לקנייה');
     const nextQuantity = quantityRound(current.quantity + quantity);
-    const nextAverage = money(((current.quantity * current.averageCost) + gross + charges) / nextQuantity);
+    const nextAverage = Math.round((((current.quantity * current.averageCost) + gross + charges) / nextQuantity) * 1e6) / 1e6;
     cash = money(account.cash - debit);
     const next = { symbol, quantity: nextQuantity, averageCost: nextAverage };
     if (index >= 0) positions[index] = next; else positions.push(next);
