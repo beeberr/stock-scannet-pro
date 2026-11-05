@@ -18,14 +18,14 @@ try {
   assert.equal(account.positions[0].averageCost,101);
   account = executeTrade(account,{symbol:'AAPL',side:'BUY',quantity:1,price:110,fees:1}).account;
   assert.equal(account.positions[0].quantity,3);
-  assert.equal(account.positions[0].averageCost,104);
-  assert.equal(getOpenCostBasis(account),312);
+  assert.equal(account.positions[0].averageCost,104.333333);
+  assert.equal(getOpenCostBasis(account),313);
   const sale = executeTrade(account,{symbol:'AAPL',side:'SELL',quantity:1,price:120,fees:2});
   account = sale.account;
-  assert.equal(sale.realizedPnl,14);
+  assert.equal(sale.realizedPnl,13.67);
   assert.equal(account.cash,9805);
   assert.equal(account.positions[0].quantity,2);
-  assert.equal(getRealizedPnl(account),14);
+  assert.equal(getRealizedPnl(account),13.67);
   assert.throws(()=>executeTrade(account,{symbol:'AAPL',side:'SELL',quantity:3,price:120}),/אין מספיק יחידות/);
   assert.throws(()=>executeTrade(createDefaultAccounts()[0],{symbol:'TSLA',side:'BUY',quantity:100,price:200}),/אין יתרת מזומן/);
   assert.throws(()=>executeTrade(account,{symbol:'',side:'BUY',quantity:1,price:10}),/סימול/);
