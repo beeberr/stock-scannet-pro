@@ -6,7 +6,6 @@ Hebrew RTL investment research and paper-trading workspace.
 - Responsive Hebrew/RTL dashboard scaffold.
 - Eight separately defined analysis engines and clear connection status.
 - Watchlist for equities, ETFs, indices, gold and oil.
-- Two independent local demo accounts: short-term trading and value investing.
 - Two independent local demo accounts with unit-based buy/sell ledger, weighted average cost, fees, financing, cash checks, position quantities, and realized P&L.\n- Legacy demo balances and trade history are migrated without inventing execution prices or quantities.\n- Regression tests for trade accounting, insufficient cash, overselling, validation, and legacy migration.
 - Dedicated forecast journal and public-disclosure monitoring screens.
 - Explicit warning labels: no live quotes, no fabricated scores, and no implied recommendations.
