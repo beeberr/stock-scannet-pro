@@ -1,0 +1,18 @@
+name: Build and test
+on:
+  push:
+    branches: [main, stock-scanner-connection-check]
+  pull_request:
+    branches: [main]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install
+      - run: npm run test:paper
+      - run: npm run test:market
+      - run: npm run build
