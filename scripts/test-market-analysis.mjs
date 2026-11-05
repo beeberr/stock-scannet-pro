@@ -32,10 +32,10 @@ try {
   assert.ok(report.observations.length >= 3);
 
   assert.equal(analyzeTechnical(candles.slice(0,19)).status,'INSUFFICIENT_DATA');
+  assert.equal(movingAverageConvergenceDivergence([1,2,3],12,26,9),null);
   assert.throws(()=>analyzeTechnical([candles[1],candles[0]]),/כרונולוגית/);
   assert.throws(()=>analyzeTechnical([{...candles[0],high:1}]),/OHLCV/);
   assert.throws(()=>simpleMovingAverage([1,2],0),/חיובי/);
-  assert.throws(()=>movingAverageConvergenceDivergence([1,2,3],12,26,9),null);
   console.log('PASS: SMA, RSI, ATR, MACD, insufficient history, OHLCV validation and chronological validation');
 } finally {
   rmSync(out,{recursive:true,force:true});
