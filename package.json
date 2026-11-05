@@ -7,7 +7,8 @@
     "dev": "vite --host 0.0.0.0",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 0.0.0.0",
-    "test:paper": "node scripts/test-paper-trading.mjs"
+    "test:paper": "node scripts/test-paper-trading.mjs",
+    "test:market": "node scripts/test-market-analysis.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.3.4",
