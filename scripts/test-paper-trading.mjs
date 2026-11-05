@@ -1,16 +1,14 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { createRequire } from 'node:module';
 import { rmSync } from 'node:fs';
 
 const out = '.tmp-paper-test';
-const compile = spawnSync('npx', ['tsc','src/paperTrading.ts','--target','ES2020','--module','commonjs','--outDir',out,'--strict','--skipLibCheck'], { encoding:'utf8' });
+const compile = spawnSync('npx', ['tsc','src/paperTrading.ts','--target','ES2020','--module','ES2020','--outDir',out,'--strict','--skipLibCheck'], { encoding:'utf8' });
 if (compile.status !== 0) {
   process.stderr.write(compile.stdout + compile.stderr);
   process.exit(compile.status ?? 1);
 }
-const require = createRequire(import.meta.url);
-const ledger = require('../' + out + '/paperTrading.js');
+const ledger = await import(new URL('../' + out + '/paperTrading.js', import.meta.url));
 const { createDefaultAccounts, executeTrade, getOpenCostBasis, getRealizedPnl, loadAccounts } = ledger;
 try {
   let account = createDefaultAccounts()[0];
