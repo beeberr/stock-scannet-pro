@@ -1,4 +1,4 @@
-name: Build
+name: Build and test
 on:
   push:
     branches: [main, stock-scanner-connection-check]
@@ -13,4 +13,5 @@ jobs:
         with:
           node-version: 20
       - run: npm install
+      - run: npm run test:paper
       - run: npm run build
