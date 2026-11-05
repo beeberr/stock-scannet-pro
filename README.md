@@ -7,7 +7,7 @@ Hebrew RTL investment research and paper-trading workspace.
 - Eight separately defined analysis engines and clear connection status.
 - Watchlist for equities, ETFs, indices, gold and oil.
 - Two independent local demo accounts: short-term trading and value investing.
-- Manual demo-trade log and basic balance tracking.
+- Two independent local demo accounts with unit-based buy/sell ledger, weighted average cost, fees, financing, cash checks, position quantities, and realized P&L.\n- Legacy demo balances and trade history are migrated without inventing execution prices or quantities.\n- Regression tests for trade accounting, insufficient cash, overselling, validation, and legacy migration.
 - Dedicated forecast journal and public-disclosure monitoring screens.
 - Explicit warning labels: no live quotes, no fabricated scores, and no implied recommendations.
 
@@ -33,5 +33,5 @@ A monthly doubling target is tracked only as an aspiration, never represented as
 - Add bank research sources where access and redistribution are permitted.
 - Add official SEC and public-disclosure ingestion.
 - Implement and backtest the eight engines with a forecast journal.
-- Upgrade demo execution to units, execution prices, fees, spreads, financing, open/closed P&L and cloud persistence.
+- Add verified market-data sources and mark-to-market valuation with source timestamps; keep market value unavailable when quotes are missing.\n- Add cloud persistence and authentication after data and security design is reviewed.
 - Deploy only after verification, on a hosting platform selected independently of AppDeploy.
