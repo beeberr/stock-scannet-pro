@@ -1,4 +1,4 @@
-import {useMemo,useState, type FormEvent} from 'react';
+import {useState, type FormEvent} from 'react';
 type Tab='סקירה'|'סורק'|'חשבונות דמו'|'יומן ביצועים'|'דיווחי בעלי עניין';
 type Trade={id:number;symbol:string;side:string;amount:number;date:string;note:string};
 type Account={name:string;balance:number;trades:Trade[]};
