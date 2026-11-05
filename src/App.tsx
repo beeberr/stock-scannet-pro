@@ -1,4 +1,4 @@
-import {useMemo,useState} from 'react';
+import {useMemo,useState, type FormEvent} from 'react';
 type Tab='סקירה'|'סורק'|'חשבונות דמו'|'יומן ביצועים'|'דיווחי בעלי עניין';
 type Trade={id:number;symbol:string;side:string;amount:number;date:string;note:string};
 type Account={name:string;balance:number;trades:Trade[]};
@@ -22,7 +22,7 @@ export default function App(){
  const save=(next:Account[])=>{setAccounts(next);localStorage.setItem('ssp-accounts',JSON.stringify(next));};
  const all=accounts.reduce((s,a)=>s+a.balance,0);
  const filtered=watch.filter(a=>(a.join(' ').toLowerCase().includes(query.toLowerCase()))&&(filter==='הכל'||a[2]===filter));
- function addTrade(e:React.FormEvent){e.preventDefault();const v=Number(amount);if(!symbol.trim()||!Number.isFinite(v)||v<=0)return;const t:Trade={id:Date.now(),symbol:symbol.toUpperCase(),side,amount:v,date:new Date().toLocaleDateString('he-IL'),note};save(accounts.map((a,i)=>i===active?{...a,balance:a.balance+(side==='קנייה'?-v:v),trades:[t,...a.trades]}:a));setNote('');}
+ function addTrade(e:FormEvent){e.preventDefault();const v=Number(amount);if(!symbol.trim()||!Number.isFinite(v)||v<=0)return;const t:Trade={id:Date.now(),symbol:symbol.toUpperCase(),side,amount:v,date:new Date().toLocaleDateString('he-IL'),note};save(accounts.map((a,i)=>i===active?{...a,balance:a.balance+(side==='קנייה'?-v:v),trades:[t,...a.trades]}:a));setNote('');}
  function reset(){if(confirm('לאפס את חשבון הדמו?'))save(accounts.map((a,i)=>i===active?{...a,balance:10000,trades:[]}:a));}
  const nav:Tab[]=['סקירה','סורק','חשבונות דמו','יומן ביצועים','דיווחי בעלי עניין'];
  return <div className="shell"><header><div className="brand"><b className="logo">S</b><div><strong>STOCK SCANNER <em>PRO</em></strong><small>מחקר שוק · סריקה · ניהול דמו</small></div></div><span className="status">● סביבת סימולציה · ללא מסחר אמיתי</span></header>
