@@ -142,7 +142,7 @@ export function analyzeTechnical(candles: readonly Candle[]): TechnicalAnalysis 
   if (macd !== null) observations.push(macd.histogram > 0 ? 'היסטוגרמת MACD חיובית' : macd.histogram < 0 ? 'היסטוגרמת MACD שלילית' : 'היסטוגרמת MACD אפסית');
   return {
     status: candles.length >= 50 ? 'READY' : 'INSUFFICIENT_DATA',
-    asOf: candles.at(-1)?.time ?? null,
+    asOf: candles.length ? candles[candles.length - 1].time : null,
     observations,
     sma20,
     sma50,
