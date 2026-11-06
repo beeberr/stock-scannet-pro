@@ -1,4 +1,4 @@
-import { analyzeTechnical, type Candle } from './marketAnalysis';
+import { analyzeTechnical, type Candle } from './marketAnalysis.js';
 
 export type TradeSignal = 'BUY_CANDIDATE' | 'WAIT' | 'AVOID';
 export type ExitSignal = 'HOLD' | 'STOP_LOSS' | 'TAKE_PROFIT' | 'TREND_INVALIDATED';
