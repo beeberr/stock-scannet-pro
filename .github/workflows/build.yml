@@ -1,7 +1,7 @@
 name: Build and test
 on:
   push:
-    branches: [main, stock-scanner-connection-check]
+    branches: [main, stock-scanner-connection-check, m1-cfd-engine]
   pull_request:
     branches: [main]
 jobs:
