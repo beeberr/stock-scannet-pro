@@ -15,4 +15,5 @@ jobs:
       - run: npm install
       - run: npm run test:paper
       - run: npm run test:market
+      - run: npm run test:signal
       - run: npm run build
