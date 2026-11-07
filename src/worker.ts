@@ -9,8 +9,8 @@ const COMMODITIES = [
   { key: "GC", label: "זהב", match: (x: any) => x.symbol === "XAU/USD" || /gold spot/i.test(x.name || "") },
   { key: "HG", label: "נחושת", match: (x: any) => x.symbol === "HG1" || /copper spot/i.test(x.name || "") },
   { key: "CL", label: "נפט WTI", match: (x: any) => x.symbol === "WTI/USD" || /crude oil wti spot/i.test(x.name || "") },
-  { key: "KC", label: "קפה", match: (x: any) => /coffee spot/i.test(x.name || "") },
-  { key: "CC", label: "קקאו", match: (x: any) => /cocoa spot/i.test(x.name || "") },
+  { key: "KC", label: "קפה", match: (x: any) => /coffee/i.test(x.name || "") || /^KC(?:1|\\/USD)?$/i.test(x.symbol || "") },
+  { key: "CC", label: "קקאו", match: (x: any) => /cocoa/i.test(x.name || "") || /^CC(?:1|\\/USD)?$/i.test(x.symbol || "") },
 ] as const;
 
 export default {
@@ -59,7 +59,7 @@ export default {
               signal: AbortSignal.timeout(10000),
             });
             const quote = await response.json() as Record<string, any>;
-            if (!response.ok || quote.status === "error" || quote.code !== undefined || quote.close === undefined) {
+            if (!response.ok || quote.status === "error" || quote.code !== undefined || quote.close === undefined && quote.price === undefined) {
               return [commodity.key, { label: commodity.label, symbol: match.symbol, available: false, error: quote.message || "ספק הנתונים לא החזיר מחיר" }] as const;
             }
             return [commodity.key, { ...quote, label: commodity.label, symbol: match.symbol, available: true }] as const;
