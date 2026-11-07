@@ -5,6 +5,14 @@ interface Env {
 
 const ALLOWED_SYMBOLS = new Set(["AAPL", "MSFT", "NVDA", "XLE"]);
 
+const COMMODITIES = [
+  { key: "GC", label: "זהב", match: (x: any) => x.symbol === "XAU/USD" || /gold spot/i.test(x.name || "") },
+  { key: "HG", label: "נחושת", match: (x: any) => x.symbol === "HG1" || /copper spot/i.test(x.name || "") },
+  { key: "CL", label: "נפט WTI", match: (x: any) => x.symbol === "WTI/USD" || /crude oil wti spot/i.test(x.name || "") },
+  { key: "KC", label: "קפה", match: (x: any) => /coffee spot/i.test(x.name || "") },
+  { key: "CC", label: "קקאו", match: (x: any) => /cocoa spot/i.test(x.name || "") },
+] as const;
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -14,6 +22,61 @@ export default {
         { status: "ok", version: "2026-11-08-cache-check", assets: "bound" },
         { headers: { "Cache-Control": "no-store" } },
       );
+    }
+
+    if (url.pathname === "/api/commodities") {
+      if (request.method !== "GET") {
+        return Response.json({ error: "Method not allowed." }, { status: 405 });
+      }
+      const key = env.TWELVE_DATA_API_KEY?.trim();
+      if (!key) {
+        return Response.json({ error: "Market data secret is missing from this Worker." }, { status: 503 });
+      }
+      try {
+        const catalogUrl = new URL("https://api.twelvedata.com/commodities");
+        catalogUrl.searchParams.set("apikey", key);
+        const catalogResponse = await fetch(catalogUrl, {
+          headers: { Accept: "application/json" },
+          signal: AbortSignal.timeout(10000),
+        });
+        const catalog = await catalogResponse.json() as { data?: Array<Record<string, any>>; status?: string; message?: string };
+        if (!catalogResponse.ok || !Array.isArray(catalog.data)) {
+          throw new Error(catalog.message || "Twelve Data commodity catalog is unavailable.");
+        }
+
+        const results = await Promise.all(COMMODITIES.map(async (commodity) => {
+          const match = catalog.data!.find(commodity.match);
+          if (!match || typeof match.symbol !== "string") {
+            return [commodity.key, { label: commodity.label, available: false, error: "לא נמצא בקטלוג הסחורות של Twelve Data" }] as const;
+          }
+          const quoteUrl = new URL("https://api.twelvedata.com/quote");
+          quoteUrl.searchParams.set("symbol", match.symbol);
+          quoteUrl.searchParams.set("exchange", "COMMODITY");
+          quoteUrl.searchParams.set("apikey", key);
+          try {
+            const response = await fetch(quoteUrl, {
+              headers: { Accept: "application/json" },
+              signal: AbortSignal.timeout(10000),
+            });
+            const quote = await response.json() as Record<string, any>;
+            if (!response.ok || quote.status === "error" || quote.code !== undefined || quote.close === undefined) {
+              return [commodity.key, { label: commodity.label, symbol: match.symbol, available: false, error: quote.message || "ספק הנתונים לא החזיר מחיר" }] as const;
+            }
+            return [commodity.key, { ...quote, label: commodity.label, symbol: match.symbol, available: true }] as const;
+          } catch (error) {
+            return [commodity.key, { label: commodity.label, symbol: match.symbol, available: false, error: error instanceof Error ? error.message : "שגיאת חיבור" }] as const;
+          }
+        }));
+        return Response.json(
+          { data: Object.fromEntries(results), fetchedAt: new Date().toISOString(), source: "Twelve Data" },
+          { headers: { "Cache-Control": "public, max-age=30, s-maxage=30" } },
+        );
+      } catch (error) {
+        return Response.json(
+          { error: error instanceof Error ? error.message : "Commodity data is temporarily unavailable." },
+          { status: 502 },
+        );
+      }
     }
 
     if (url.pathname === "/api/quotes") {
