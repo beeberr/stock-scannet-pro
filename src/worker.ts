@@ -6,12 +6,71 @@ interface Env {
 const ALLOWED_SYMBOLS = new Set(["AAPL", "MSFT", "NVDA", "XLE"]);
 
 const COMMODITIES = [
-  { key: "GC", label: "זהב", match: (x: any) => x.symbol === "XAU/USD" || /gold spot/i.test(x.name || "") },
-  { key: "HG", label: "נחושת", match: (x: any) => x.symbol === "HG1" || /copper spot/i.test(x.name || "") },
-  { key: "CL", label: "נפט WTI", match: (x: any) => x.symbol === "WTI/USD" || /crude oil wti spot/i.test(x.name || "") },
-  { key: "KC", label: "קפה", match: (x: any) => /coffee/i.test(x.name || "") || ["KC1", "KC/USD"].includes(String(x.symbol || "").toUpperCase()) },
-  { key: "CC", label: "קקאו", match: (x: any) => /cocoa/i.test(x.name || "") || ["CC1", "CC/USD"].includes(String(x.symbol || "").toUpperCase()) },
+  { key: "GC", label: "זהב", symbol: "GC=F" },
+  { key: "HG", label: "נחושת", symbol: "HG=F" },
+  { key: "CL", label: "נפט WTI", symbol: "CL=F" },
+  { key: "KC", label: "קפה", symbol: "KC=F" },
+  { key: "CC", label: "קקאו", symbol: "CC=F" },
 ] as const;
+
+async function fetchYahooCommodity(item: (typeof COMMODITIES)[number]) {
+  const encoded = encodeURIComponent(item.symbol);
+  let lastError = "ספק הנתונים לא החזיר מחיר";
+  for (const host of ["query1.finance.yahoo.com", "query2.finance.yahoo.com"]) {
+    try {
+      const upstream = new URL(`https://${host}/v8/finance/chart/${encoded}`);
+      upstream.searchParams.set("range", "5d");
+      upstream.searchParams.set("interval", "1d");
+      const response = await fetch(upstream, {
+        headers: {
+          Accept: "application/json",
+          "User-Agent": "Mozilla/5.0 (compatible; StockScannerPro/1.0)",
+        },
+        signal: AbortSignal.timeout(12000),
+      });
+      const payload = await response.json() as {
+        chart?: {
+          result?: Array<{ meta?: Record<string, any> }>;
+          error?: { description?: string } | null;
+        };
+      };
+      const meta = payload.chart?.result?.[0]?.meta;
+      const price = Number(meta?.regularMarketPrice ?? meta?.previousClose);
+      const previous = Number(meta?.chartPreviousClose ?? meta?.previousClose);
+      if (!response.ok || !Number.isFinite(price) || price <= 0) {
+        lastError = payload.chart?.error?.description || `Yahoo Finance החזיר HTTP ${response.status}`;
+        continue;
+      }
+      const change = Number.isFinite(previous) && previous > 0 ? price - previous : null;
+      const percent = change !== null && previous > 0 ? (change / previous) * 100 : null;
+      return [item.key, {
+        label: item.label,
+        symbol: item.symbol,
+        name: meta?.shortName || meta?.longName || item.label,
+        price: String(price),
+        close: String(price),
+        previous_close: Number.isFinite(previous) ? String(previous) : undefined,
+        change: change === null ? undefined : change.toFixed(6),
+        percent_change: percent === null ? undefined : percent.toFixed(4),
+        currency: meta?.currency || "USD",
+        exchange: meta?.fullExchangeName || meta?.exchangeName || "Futures",
+        datetime: meta?.regularMarketTime ? new Date(meta.regularMarketTime * 1000).toISOString() : undefined,
+        available: true,
+        delayed: true,
+        source: "Yahoo Finance",
+      }] as const;
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : "שגיאת חיבור לספק הנתונים";
+    }
+  }
+  return [item.key, {
+    label: item.label,
+    symbol: item.symbol,
+    available: false,
+    error: lastError,
+    source: "Yahoo Finance",
+  }] as const;
+}
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -19,7 +78,7 @@ export default {
 
     if (url.pathname === "/api/health") {
       return Response.json(
-        { status: "ok", version: "2026-11-08-cache-check", assets: "bound" },
+        { status: "ok", version: "2026-11-08-yahoo-commodities", assets: "bound" },
         { headers: { "Cache-Control": "no-store" } },
       );
     }
@@ -28,55 +87,18 @@ export default {
       if (request.method !== "GET") {
         return Response.json({ error: "Method not allowed." }, { status: 405 });
       }
-      const key = env.TWELVE_DATA_API_KEY?.trim();
-      if (!key) {
-        return Response.json({ error: "Market data secret is missing from this Worker." }, { status: 503 });
-      }
-      try {
-        const catalogUrl = new URL("https://api.twelvedata.com/commodities");
-        catalogUrl.searchParams.set("apikey", key);
-        const catalogResponse = await fetch(catalogUrl, {
-          headers: { Accept: "application/json" },
-          signal: AbortSignal.timeout(10000),
-        });
-        const catalog = await catalogResponse.json() as { data?: Array<Record<string, any>>; status?: string; message?: string };
-        if (!catalogResponse.ok || !Array.isArray(catalog.data)) {
-          throw new Error(catalog.message || "Twelve Data commodity catalog is unavailable.");
-        }
-
-        const results = await Promise.all(COMMODITIES.map(async (commodity) => {
-          const match = catalog.data!.find(commodity.match);
-          if (!match || typeof match.symbol !== "string") {
-            return [commodity.key, { label: commodity.label, available: false, error: "לא נמצא בקטלוג הסחורות של Twelve Data" }] as const;
-          }
-          const quoteUrl = new URL("https://api.twelvedata.com/quote");
-          quoteUrl.searchParams.set("symbol", match.symbol);
-          quoteUrl.searchParams.set("exchange", "COMMODITY");
-          quoteUrl.searchParams.set("apikey", key);
-          try {
-            const response = await fetch(quoteUrl, {
-              headers: { Accept: "application/json" },
-              signal: AbortSignal.timeout(10000),
-            });
-            const quote = await response.json() as Record<string, any>;
-            if (!response.ok || quote.status === "error" || quote.code !== undefined || quote.close === undefined && quote.price === undefined) {
-              return [commodity.key, { label: commodity.label, symbol: match.symbol, available: false, error: quote.message || "ספק הנתונים לא החזיר מחיר" }] as const;
-            }
-            return [commodity.key, { ...quote, label: commodity.label, symbol: match.symbol, available: true }] as const;
-          } catch (error) {
-            return [commodity.key, { label: commodity.label, symbol: match.symbol, available: false, error: error instanceof Error ? error.message : "שגיאת חיבור" }] as const;
-          }
-        }));
-        return Response.json(
-          { data: Object.fromEntries(results), fetchedAt: new Date().toISOString(), source: "Twelve Data" },
-          { headers: { "Cache-Control": "public, max-age=30, s-maxage=30" } },
-        );
-      } catch (error) {
-        return Response.json(
-          { error: error instanceof Error ? error.message : "Commodity data is temporarily unavailable." },
-          { status: 502 },
-        );
-      }
+      const results = await Promise.all(COMMODITIES.map(fetchYahooCommodity));
+      const available = results.filter(([, quote]) => quote.available).length;
+      return Response.json(
+        {
+          data: Object.fromEntries(results),
+          fetchedAt: new Date().toISOString(),
+          source: "Yahoo Finance (futures; delayed quotes)",
+          available,
+          total: COMMODITIES.length,
+        },
+        { headers: { "Cache-Control": "public, max-age=30, s-maxage=30" } },
+      );
     }
 
     if (url.pathname === "/api/quotes") {
@@ -140,7 +162,7 @@ export default {
       const headers = new Headers(assetResponse.headers);
       headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
       headers.set("Pragma", "no-cache");
-      headers.set("X-Stock-Scanner-Version", "2026-11-08-cache-check");
+      headers.set("X-Stock-Scanner-Version", "2026-11-08-yahoo-commodities");
       return new Response(assetResponse.body, {
         status: assetResponse.status,
         statusText: assetResponse.statusText,
