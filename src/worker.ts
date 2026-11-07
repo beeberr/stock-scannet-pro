@@ -14,7 +14,7 @@ export default {
         return Response.json({ error: "Method not allowed." }, { status: 405 });
       }
 
-      const key = env.TWELVE_DATA_API_KEY;
+      const key = env.TWELVE_DATA_API_KEY?.trim();
       if (!key) {
         return Response.json(
           { error: "Market data secret is missing from this Worker. Add TWELVE_DATA_API_KEY to Worker secrets." },
