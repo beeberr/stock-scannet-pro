@@ -9,8 +9,8 @@ const COMMODITIES = [
   { key: "GC", label: "זהב", match: (x: any) => x.symbol === "XAU/USD" || /gold spot/i.test(x.name || "") },
   { key: "HG", label: "נחושת", match: (x: any) => x.symbol === "HG1" || /copper spot/i.test(x.name || "") },
   { key: "CL", label: "נפט WTI", match: (x: any) => x.symbol === "WTI/USD" || /crude oil wti spot/i.test(x.name || "") },
-  { key: "KC", label: "קפה", match: (x: any) => /coffee/i.test(x.name || "") || /^KC(?:1|\\/USD)?$/i.test(x.symbol || "") },
-  { key: "CC", label: "קקאו", match: (x: any) => /cocoa/i.test(x.name || "") || /^CC(?:1|\\/USD)?$/i.test(x.symbol || "") },
+  { key: "KC", label: "קפה", match: (x: any) => /coffee/i.test(x.name || "") || ["KC1", "KC/USD"].includes(String(x.symbol || "").toUpperCase()) },
+  { key: "CC", label: "קקאו", match: (x: any) => /cocoa/i.test(x.name || "") || ["CC1", "CC/USD"].includes(String(x.symbol || "").toUpperCase()) },
 ] as const;
 
 export default {
