@@ -9,6 +9,13 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
+    if (url.pathname === "/api/health") {
+      return Response.json(
+        { status: "ok", version: "2026-11-08-cache-check", assets: "bound" },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+
     if (url.pathname === "/api/quotes") {
       if (request.method !== "GET") {
         return Response.json({ error: "Method not allowed." }, { status: 405 });
@@ -65,6 +72,18 @@ export default {
       }
     }
 
-    return env.ASSETS.fetch(request);
+    const assetResponse = await env.ASSETS.fetch(request);
+    if (url.pathname === "/" || url.pathname === "/index.html") {
+      const headers = new Headers(assetResponse.headers);
+      headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
+      headers.set("Pragma", "no-cache");
+      headers.set("X-Stock-Scanner-Version", "2026-11-08-cache-check");
+      return new Response(assetResponse.body, {
+        status: assetResponse.status,
+        statusText: assetResponse.statusText,
+        headers,
+      });
+    }
+    return assetResponse;
   },
 };
