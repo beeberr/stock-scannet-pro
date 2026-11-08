@@ -91,6 +91,21 @@ async function fetchMassiveCommodities(apiKey: string) {
         apiKey
       );
       const quote = normalizeFuturesQuote(product, contract, Array.isArray(barsPayload.results) ? barsPayload.results : []);
+      const history = (quote as typeof quote & { history?: import("./marketAnalysis.js").Candle[] }).history || [];
+      if (history.length) {
+        const technical = analyzeTechnical(history);
+        const momentum = analyzeMomentum(history);
+        const previous = history.slice(-21, -1);
+        return [product.key, {
+          ...quote,
+          research: {
+            status: technical.status, candles: history.length, asOf: history[history.length - 1].time,
+            lastPrice: history[history.length - 1].close,
+            technical: { ...technical, support20: previous.length ? Math.min(...previous.map(c => c.low)) : null, resistance20: previous.length ? Math.max(...previous.map(c => c.high)) : null },
+            momentum
+          }
+        }] as const;
+      }
       return [product.key, quote] as const;
     } catch (error) {
       return [product.key, {
@@ -188,43 +203,6 @@ export default {
       }
     }
 
-
-    if (url.pathname === "/api/commodity-engines") {
-      if (request.method !== "GET") return Response.json({ error: "Method not allowed." }, { status: 405 });
-      const key = env.MASSIVE_API_KEY?.trim();
-      if (!key) return Response.json({ error: "מפתח Massive חסר." }, { status: 503 });
-      const cacheKey = new Request(new URL("/api/commodity-engines?provider=massive-v1-history80", url.origin), { method: "GET" });
-      const edgeCache = (globalThis as unknown as { caches: { default: Cache } }).caches.default;
-      const cached = await edgeCache.match(cacheKey);
-      if (cached) return cached;
-      try {
-        const raw = await fetchMassiveCommodities(key);
-        const data = Object.fromEntries(Object.entries(raw).map(([symbol, quote]) => {
-          const q = quote as { history?: import("./marketAnalysis.js").Candle[]; available?: boolean; delayed?: boolean; delayHours?: number; source?: string; error?: string };
-          if (!q.available || !Array.isArray(q.history)) return [symbol, { status: "UNAVAILABLE", error: q.error || "היסטוריית חוזה אינה זמינה", source: "Massive Futures" }];
-          const technical = analyzeTechnical(q.history);
-          const momentum = analyzeMomentum(q.history);
-          const latest = q.history[q.history.length - 1];
-          const previous = q.history.slice(-21, -1);
-          return [symbol, {
-            status: technical.status, source: "Massive Futures", delayed: true, delayHours: 8,
-            candles: q.history.length, asOf: latest?.time, lastPrice: latest?.close,
-            technical: { ...technical, support20: previous.length ? Math.min(...previous.map(c => c.low)) : null, resistance20: previous.length ? Math.max(...previous.map(c => c.high)) : null },
-            momentum
-          }];
-        }));
-        const response = Response.json({
-          fetchedAt: new Date().toISOString(), provider: "Massive Futures",
-          delayNotice: "נתוני החוזים ההיסטוריים במסלול החינמי מעוכבים בכ-8 שעות.",
-          activeEngines: ["technical", "momentum"],
-          data
-        }, { headers: { "Cache-Control": "public, max-age=900, s-maxage=900" } });
-        await edgeCache.put(cacheKey, response.clone());
-        return response;
-      } catch (error) {
-        return Response.json({ error: error instanceof Error ? error.message : "שגיאה בקבלת היסטוריית סחורות" }, { status: 502 });
-      }
-    }
 
     if (url.pathname === "/api/universe") {
       if (request.method !== "GET") {
