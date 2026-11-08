@@ -221,7 +221,9 @@ export default {
         const body = Response.json({
           fetchedAt: new Date().toISOString(), source: "Twelve Data",
           activeEngines: ["technical", "momentum"],
-          plannedEngines: ["value", "macro", "gold-oil", "indices-sectors", "news-events", "public-disclosures"],
+          integratedEngines: ["value", "indices-sectors", "news-events", "public-disclosures"],
+          partialEngines: ["macro", "gold-oil"],
+          plannedEngines: ["bank-forecast-consensus", "commodity-supply-demand", "political-disclosures"],
           data: Object.fromEntries(entries),
           note: "ניתוח טכני ומומנטום מחושבים מנרות יומיים שהתקבלו מהספק. תוצאות הן מחקריות בלבד, אינן תחזית או הוראת מסחר."
         }, { headers: { "Cache-Control": "public, max-age=900, s-maxage=900" } });
