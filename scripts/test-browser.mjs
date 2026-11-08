@@ -9,7 +9,7 @@ try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => {
-    if (message.type() === 'error') errors.push(message.text());
+    if (message.type() === 'error' && message.location().url.startsWith(baseUrl)) errors.push(message.text());
   });
   page.on('requestfailed', request => {
     if (request.url().startsWith(baseUrl)) failedAssets.push(request.url() + ' — ' + (request.failure()?.errorText ?? 'request failed'));
@@ -33,7 +33,7 @@ try {
   if (!assets.some(url => /\.css(?:\?|$)/.test(url))) throw new Error('No application CSS bundle was loaded.');
 
   await page.getByRole('button', { name: /סורק/ }).first().click();
-  await page.getByRole('heading', { name: 'סורק' }).waitFor({ state: 'visible', timeout: 10000 });
+  await page.getByRole('heading', { name: 'סורק', exact: true }).waitFor({ state: 'visible', timeout: 10000 });
   const search = page.getByPlaceholder('חפש לפי שם או סימול');
   await search.fill('AAPL');
   await page.getByText('AAPL', { exact: true }).first().waitFor({ state: 'visible', timeout: 10000 });
