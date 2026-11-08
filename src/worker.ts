@@ -17,6 +17,8 @@ interface Env {
   FMP_API_KEY?: string;
   EODHD_API_KEY?: string;
   ALPHA_VANTAGE_API_KEY?: string;
+  EULERPOOL_API_KEY?: string;
+  MARKETSTACK_API_KEY?: string;
   SEC_USER_AGENT?: string;
   ASSETS: { fetch(request: Request): Promise<Response> };
 }
@@ -347,7 +349,8 @@ export default {
       if (request.method !== "GET") return Response.json({ error: "Method not allowed." }, { status: 405 });
       const key = env.FMP_API_KEY?.trim();
       const eodhdKey = env.EODHD_API_KEY?.trim();
-      if (!key && !eodhdKey) return Response.json({ engine: "value", status: "UNAVAILABLE", provider: "FMP/EODHD", providerConfigured: false, data: {}, error: "לא הוגדר מפתח FMP או EODHD ב-Worker." }, { headers: { "Cache-Control": "no-store" } });
+      const eulerpoolKey = env.EULERPOOL_API_KEY?.trim();
+      if (!key && !eodhdKey && !eulerpoolKey) return Response.json({ engine: "value", status: "UNAVAILABLE", provider: "FMP/EODHD/Eulerpool", providerConfigured: false, data: {}, error: "לא הוגדר מפתח FMP, EODHD או Eulerpool ב-Worker." }, { headers: { "Cache-Control": "no-store" } });
       const symbols = (url.searchParams.get("symbols") || "AAPL,MSFT,NVDA,JPM").split(",").map(s => s.trim().toUpperCase()).filter(Boolean);
       const equitySymbols = new Set<string>(ASSET_UNIVERSE.filter(asset => asset[2] === "מניה").map(asset => asset[0]));
       if (!symbols.length || symbols.length > 8 || symbols.some(symbol => !equitySymbols.has(symbol))) {
@@ -390,9 +393,48 @@ export default {
           partial: true
         };
       };
+      const fetchEulerpool = async (symbol: string) => {
+        if (!eulerpoolKey) throw new Error("Eulerpool key is not configured");
+        const endpoint = new URL("https://api.eulerpool.com/api/1/equity/overview/" + encodeURIComponent(symbol));
+        const response = await fetch(endpoint, {
+          headers: { Accept: "application/json", Authorization: "Bearer " + eulerpoolKey },
+          signal: AbortSignal.timeout(15000)
+        });
+        const payload = await response.json() as Record<string, any>;
+        if (!response.ok || !payload || payload.error || (!payload.ticker && !payload.isin)) {
+          throw new Error("Eulerpool HTTP " + response.status + " or invalid company overview");
+        }
+        return {
+          symbol, status: "READY", source: "Eulerpool",
+          asOf: payload.asOf || payload.updatedAt || null,
+          valuation: {
+            pe: payload.pe ?? null, priceToBook: payload.pb ?? payload.priceToBook ?? null,
+            debtEquity: payload.debtToEquity ?? null, currentRatio: payload.currentRatio ?? null,
+            returnOnEquity: payload.roe ?? payload.returnOnEquity ?? null,
+            netProfitMargin: payload.netProfitMargin ?? null,
+            priceToSales: payload.ps ?? null, dividendYield: payload.dividendYield ?? null,
+            fairValueIncome: payload.fairValueIncome ?? null, fairValueRevenue: payload.fairValueRevenue ?? null,
+            qualityScore: payload.aaqs ?? null
+          },
+          latestFinancials: null, partial: true,
+          note: "Eulerpool company overview; fields depend on endpoint coverage."
+        };
+      };
+      const fetchBestAvailableFallback = async (symbol: string) => {
+        const failures: string[] = [];
+        if (eodhdKey) {
+          try { return await fetchEodhd(symbol); }
+          catch (error) { failures.push("EODHD: " + (error instanceof Error ? error.message : "request failed")); }
+        }
+        if (eulerpoolKey) {
+          try { return await fetchEulerpool(symbol); }
+          catch (error) { failures.push("Eulerpool: " + (error instanceof Error ? error.message : "request failed")); }
+        }
+        throw new Error(failures.join("; ") || "No fundamentals fallback provider configured.");
+      };
       const entries = await Promise.all(symbols.map(async symbol => {
         try {
-          if (!key && eodhdKey) return [symbol, await fetchEodhd(symbol)] as const;
+          if (!key) return [symbol, await fetchBestAvailableFallback(symbol)] as const;
           const fetchFmp = async (path: string) => {
             const endpoint = new URL("https://financialmodelingprep.com/stable/" + path);
             endpoint.searchParams.set("symbol", symbol);
@@ -409,7 +451,7 @@ export default {
           ]);
           const ratios = ratiosResult.status === "fulfilled" ? ratiosResult.value : null;
           const statement = statementsResult.status === "fulfilled" ? statementsResult.value : null;
-          if (!ratios && !statement && eodhdKey) return [symbol, await fetchEodhd(symbol)] as const;
+          if (!ratios && !statement && (eodhdKey || eulerpoolKey)) return [symbol, await fetchBestAvailableFallback(symbol)] as const;
           const status = ratios || statement ? "READY" : "UNAVAILABLE";
           return [symbol, {
             symbol, status, source: "FMP",
@@ -434,10 +476,10 @@ export default {
             ].filter(Boolean).join("; ") : null
           }] as const;
         } catch (error) {
-          if (eodhdKey) {
-            try { return [symbol, await fetchEodhd(symbol)] as const; }
+          if (eodhdKey || eulerpoolKey) {
+            try { return [symbol, await fetchBestAvailableFallback(symbol)] as const; }
             catch (fallbackError) {
-              return [symbol, { symbol, status: "UNAVAILABLE", source: "FMP/EODHD", error: (error instanceof Error ? error.message : "FMP error") + "; " + (fallbackError instanceof Error ? fallbackError.message : "EODHD error") }] as const;
+              return [symbol, { symbol, status: "UNAVAILABLE", source: "FMP/EODHD/Eulerpool", error: (error instanceof Error ? error.message : "FMP error") + "; " + (fallbackError instanceof Error ? fallbackError.message : "fallback error") }] as const;
             }
           }
           return [symbol, { symbol, status: "UNAVAILABLE", source: "FMP", error: error instanceof Error ? error.message : "שגיאת ספק" }] as const;
@@ -446,7 +488,7 @@ export default {
       const data = Object.fromEntries(entries);
       const response = Response.json({
         engine: "value", status: entries.some(([, row]) => row.status === "READY") ? "READY" : "UNAVAILABLE",
-        provider: key ? (eodhdKey ? "FMP with EODHD fallback" : "FMP") : "EODHD", providerConfigured: true, fetchedAt: new Date().toISOString(), data,
+        provider: key ? (eodhdKey && eulerpoolKey ? "FMP with EODHD/Eulerpool fallback" : eodhdKey ? "FMP with EODHD fallback" : eulerpoolKey ? "FMP with Eulerpool fallback" : "FMP") : (eodhdKey ? "EODHD" : "Eulerpool"), providerConfigured: true, fetchedAt: new Date().toISOString(), data,
         note: "מדדי הערכת שווי ודוחות פיננסיים בלבד; זמינות השדות תלויה בהרשאות תוכנית FMP. אין לראות בכך המלצת השקעה."
       }, { headers: { "Cache-Control": "public, max-age=21600, s-maxage=21600" } });
       await edgeCache.put(cacheKey, response.clone());
@@ -653,6 +695,8 @@ export default {
             fmp: env.FMP_API_KEY ? "configured" : "missing-key",
             eodhd: env.EODHD_API_KEY ? "configured" : "missing-key",
             alphaVantage: env.ALPHA_VANTAGE_API_KEY ? "configured" : "missing-key",
+            eulerpool: env.EULERPOOL_API_KEY ? "configured" : "missing-key",
+            marketstack: env.MARKETSTACK_API_KEY ? "configured" : "missing-key",
             secEdgar: env.SEC_USER_AGENT ? "configured" : "missing-user-agent"
           }
         },
@@ -723,7 +767,8 @@ export default {
 
       const twelveKey = env.TWELVE_DATA_API_KEY?.trim();
       const alphaKey = env.ALPHA_VANTAGE_API_KEY?.trim();
-      if (!twelveKey && !alphaKey) {
+      const marketstackKey = env.MARKETSTACK_API_KEY?.trim();
+      if (!twelveKey && !alphaKey && !marketstackKey) {
         return Response.json(
           { error: "חסרים מפתחות TWELVE_DATA_API_KEY ו-ALPHA_VANTAGE_API_KEY ב-Worker." },
           { status: 503 }
@@ -797,26 +842,56 @@ export default {
         };
       };
 
-      const entries = await Promise.all(symbols.map(async symbol => {
-        try {
-          if (twelveKey) {
-            try {
-              return [symbol, await fetchTwelveData(symbol)] as const;
-            } catch (primaryError) {
-              if (!alphaKey) throw primaryError;
-              const fallback = await fetchAlphaVantage(symbol);
-              return [symbol, { ...fallback, fallbackFrom: "Twelve Data", fallbackReason: primaryError instanceof Error ? primaryError.message : "Twelve Data unavailable" }] as const;
-            }
-          }
-          return [symbol, await fetchAlphaVantage(symbol)] as const;
-        } catch (error) {
-          return [symbol, {
-            symbol,
-            status: "UNAVAILABLE",
-            source: twelveKey ? "Twelve Data/Alpha Vantage" : "Alpha Vantage",
-            error: error instanceof Error ? error.message : "Market data provider is temporarily unavailable."
-          }] as const;
+      const fetchMarketstack = async (symbol: string) => {
+        if (!marketstackKey) throw new Error("Marketstack key is not configured");
+        const endpoint = new URL("https://api.marketstack.com/v2/eod/latest");
+        endpoint.searchParams.set("symbols", symbol);
+        endpoint.searchParams.set("access_key", marketstackKey);
+        const response = await fetch(endpoint, {
+          headers: { Accept: "application/json" },
+          signal: AbortSignal.timeout(12000)
+        });
+        const payload = await response.json() as { data?: Array<Record<string, unknown>>; error?: { message?: string; code?: string } };
+        if (!response.ok || payload.error || !Array.isArray(payload.data)) {
+          throw new Error(symbol + ": " + (payload.error?.message || "Marketstack did not return EOD data"));
         }
+        const row = payload.data.find(item => String(item.symbol || "").toUpperCase() === symbol) || payload.data[0];
+        const close = Number(row?.close);
+        if (!row || !Number.isFinite(close) || close <= 0) {
+          throw new Error(symbol + ": Marketstack returned no valid closing price");
+        }
+        return {
+          symbol, close, price: close,
+          open: row.open ?? null, high: row.high ?? null, low: row.low ?? null,
+          volume: row.volume ?? null, datetime: row.date ?? null,
+          source: "Marketstack EOD",
+          delayedOrLive: "נתון סגירה יומי; אינו מחיר תוך-יומי או זמן אמת"
+        };
+      };
+
+      const entries = await Promise.all(symbols.map(async symbol => {
+        const failures: string[] = [];
+        if (twelveKey) {
+          try { return [symbol, await fetchTwelveData(symbol)] as const; }
+          catch (error) { failures.push("Twelve Data: " + (error instanceof Error ? error.message : "request failed")); }
+        }
+        if (alphaKey) {
+          try {
+            const fallback = await fetchAlphaVantage(symbol);
+            return [symbol, { ...fallback, fallbackFrom: twelveKey ? "Twelve Data" : null, fallbackReason: failures[0] || null }] as const;
+          } catch (error) { failures.push("Alpha Vantage: " + (error instanceof Error ? error.message : "request failed")); }
+        }
+        if (marketstackKey) {
+          try {
+            const fallback = await fetchMarketstack(symbol);
+            return [symbol, { ...fallback, fallbackFrom: failures.length ? failures.map(item => item.split(":")[0]).join(" + ") : null, fallbackReason: failures.join("; ") || null }] as const;
+          } catch (error) { failures.push("Marketstack: " + (error instanceof Error ? error.message : "request failed")); }
+        }
+        return [symbol, {
+          symbol, status: "UNAVAILABLE",
+          source: [twelveKey && "Twelve Data", alphaKey && "Alpha Vantage", marketstackKey && "Marketstack"].filter(Boolean).join("/") || "No quote provider",
+          error: failures.join("; ") || "No configured quote provider returned data."
+        }] as const;
       }));
 
       const data = Object.fromEntries(entries);
@@ -826,7 +901,7 @@ export default {
         data,
         fetchedAt: new Date().toISOString(),
         source: sources.length === 1 ? sources[0] : sources.join(" + ") || "Twelve Data/Alpha Vantage",
-        providerConfigured: { twelveData: Boolean(twelveKey), alphaVantage: Boolean(alphaKey) },
+        providerConfigured: { twelveData: Boolean(twelveKey), alphaVantage: Boolean(alphaKey), marketstack: Boolean(marketstackKey) },
         available,
         total: symbols.length,
         note: "Twelve Data הוא המקור הראשי; Alpha Vantage משמש כגיבוי רק כאשר המקור הראשי נכשל. זמני המסחר, עיכובים ומכסות תלויים בתוכנית הספק."
