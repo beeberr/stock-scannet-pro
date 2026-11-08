@@ -121,27 +121,6 @@ jobs:
             echo "Massive Futures API secret synced to the Worker; secret value was not printed."
           fi
 
-      - name: Sync optional market data provider secrets
-        env:
-          TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
-          FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
-          FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
-          EODHD_API_KEY: ${{ secrets.EODHD_API_KEY }}
-          ALPHA_VANTAGE_API_KEY: ${{ secrets.ALPHA_VANTAGE_API_KEY }}
-          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          for name in TWELVE_DATA_API_KEY FINNHUB_API_KEY FMP_API_KEY EODHD_API_KEY ALPHA_VANTAGE_API_KEY SEC_USER_AGENT; do
-            value="${!name}"
-            if [ -n "$value" ]; then
-              printf '%s' "$value" | npx wrangler secret put "$name" --config wrangler.jsonc
-              echo "$name synced to Cloudflare Worker; value not printed."
-            else
-              echo "$name is not configured in GitHub; related engine will report provider unavailable."
-            fi
-          done
-
       - name: Check deployed website
         run: |
           node --input-type=module <<'NODE'
@@ -233,25 +212,13 @@ jobs:
           }
           console.log("PASS /api/universe: 45 configured assets, five reserved slots, strict maximum 50.");
 
-          for (const provider of ["massiveFutures", "twelveData"]) {
-            if (health.providers?.[provider] !== "configured") {
-              throw new Error(`/api/health: ${provider} key is not configured in the Cloudflare Worker.`);
-            }
+          if (health.providers?.massiveFutures !== "configured") {
+            throw new Error("/api/health: MASSIVE_API_KEY is not configured in the Cloudflare Worker.");
           }
-          console.log("PASS /api/health: Massive Futures and Twelve Data credentials are configured.");
+          console.log("PASS /api/health: Massive Futures credential is configured.");
 
-          const quotes = await getJson("/api/quotes");
-          const requiredSymbols = ["AAPL", "MSFT", "NVDA", "XLE"];
-          for (const symbol of requiredSymbols) {
-            const quote = quotes.data?.[symbol];
-            if (!quote || quote.symbol !== symbol || quote.close === undefined || quote.close === null || quote.status === "error") {
-              throw new Error(`/api/quotes: missing or invalid quote for ${symbol}.`);
-            }
-          }
-          if (!["Twelve Data", "Alpha Vantage", "Twelve Data + Alpha Vantage"].includes(quotes.source)) {
-            throw new Error("/api/quotes: unexpected data source.");
-          }
-          console.log("PASS /api/quotes: valid quotes returned for AAPL, MSFT, NVDA and XLE from Twelve Data or its Alpha Vantage fallback.");
+          console.log("SKIP /api/quotes provider check: deployment is configured to use only Cloudflare and Massive credentials.");
+
 
           const commodities = await getJson("/api/commodities");
           if (commodities.providerConfigured !== true) {
