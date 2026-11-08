@@ -19,6 +19,31 @@ interface Env {
 const ALLOWED_SYMBOLS = new Set(["AAPL", "MSFT", "NVDA", "XLE"]);
 const MASSIVE_BASE_URL = "https://api.massive.com";
 
+const EIA_MONTHS: Record<string, string> = {
+  Jan: "01", Feb: "02", Mar: "03", Apr: "04", May: "05", Jun: "06",
+  Jul: "07", Aug: "08", Sep: "09", Oct: "10", Nov: "11", Dec: "12"
+};
+
+function parseEiaWeeklyInventory(html: string) {
+  const observations: Array<{ date: string; value: number }> = [];
+  const rows = html.match(/<tr\\b[^>]*>[\\s\\S]*?<\\/tr>/gi) || [];
+  for (const row of rows) {
+    const cells = [...row.matchAll(/<t[dh]\\b[^>]*>([\\s\\S]*?)<\\/t[dh]>/gi)]
+      .map(match => match[1].replace(/<[^>]*>/g, " ").replace(/&nbsp;|&#160;/gi, " ").replace(/&amp;/gi, "&").replace(/\\s+/g, " ").trim());
+    const period = cells[0]?.match(/^(\\d{4})-([A-Za-z]{3})$/);
+    if (!period || !EIA_MONTHS[period[2]]) continue;
+    for (let i = 1; i + 1 < cells.length; i += 2) {
+      const day = cells[i].match(/^(\\d{2})\\/(\\d{2})$/);
+      const raw = cells[i + 1].replace(/,/g, "");
+      const value = Number(raw);
+      if (day && raw && Number.isFinite(value)) {
+        observations.push({ date: period[1] + "-" + EIA_MONTHS[period[2]] + "-" + day[2], value });
+      }
+    }
+  }
+  return observations.sort((a, b) => a.date.localeCompare(b.date));
+}
+
 async function massiveJson<T>(path: string, apiKey: string): Promise<T> {
   const response = await fetch(new URL(path, MASSIVE_BASE_URL), {
     headers: {
@@ -254,6 +279,38 @@ export default {
             error: latest ? null : "לא נמצאו תצפיות זמינות בסדרה"
           }] as const;
         } catch (error) {
+          // EIA is the primary publisher for WCESTUS1; use its public historical table
+          // when the FRED mirror returns an error such as HTTP 404.
+          if (id === "WCESTUS1") {
+            try {
+              const eiaUrl = "https://www.eia.gov/dnav/pet/hist/LeafHandler.ashx?n=PET&s=WCESTUS1&f=W";
+              const eiaResponse = await fetch(eiaUrl, {
+                headers: { Accept: "text/html" },
+                signal: AbortSignal.timeout(12000)
+              });
+              if (!eiaResponse.ok) throw new Error("EIA HTTP " + eiaResponse.status);
+              const observations = parseEiaWeeklyInventory(await eiaResponse.text());
+              const latest = observations[observations.length - 1];
+              const prior = observations.length > 20 ? observations[observations.length - 21] : observations[0];
+              const change = latest && prior ? latest.value - prior.value : null;
+              if (latest) {
+                return [key, {
+                  key, label, unit, seriesId: id, source: "EIA",
+                  status: observations.length >= 2 ? "READY" : "INSUFFICIENT_DATA",
+                  latest: latest.value, change,
+                  changePercent: prior && prior.value !== 0 && change !== null ? change / Math.abs(prior.value) * 100 : null,
+                  asOf: latest.date, observations: observations.length, error: null
+                }] as const;
+              }
+              throw new Error("לא נמצאו תצפיות בטבלת EIA");
+            } catch (fallbackError) {
+              return [key, {
+                key, label, unit, seriesId: id, status: "UNAVAILABLE",
+                latest: null, change: null, changePercent: null, asOf: null, observations: 0,
+                error: "FRED " + id + " נכשל; גם EIA לא זמין: " + (fallbackError instanceof Error ? fallbackError.message : "שגיאת ספק")
+              }] as const;
+            }
+          }
           return [key, {
             key, label, unit, seriesId: id, status: "UNAVAILABLE",
             latest: null, change: null, changePercent: null, asOf: null, observations: 0,
