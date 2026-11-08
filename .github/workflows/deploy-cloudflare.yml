@@ -50,11 +50,11 @@ jobs:
             console.error("Cloudflare authentication check failed: CLOUDFLARE_API_TOKEN is missing or empty.");
             process.exit(1);
           }
-          if (token !== token.trim() || /[\\r\\n]/.test(token)) {
+          if (token !== token.trim() || /[\r\n]/.test(token)) {
             console.error("Cloudflare authentication check failed: the token contains leading/trailing whitespace or a line break. Save the token value only, without extra spaces or lines.");
             process.exit(1);
           }
-          if (/^Bearer\\s/i.test(token)) {
+          if (/^Bearer\s/i.test(token)) {
             console.error("Cloudflare authentication check failed: the secret appears to include the 'Bearer ' prefix. Save only the token value.");
             process.exit(1);
           }
