@@ -20,6 +20,11 @@ The research watchlist is capped at 50 assets: 20 equities, 8 commodities, 8 ind
 
 Only AAPL, MSFT, NVDA and XLE currently have a stock-quote adapter (Twelve Data); GC, SI, HG and CL currently have the Massive Futures adapter. Other watchlist assets remain visible but explicitly unconnected until a compatible free-tier provider and API credential are configured. The app must never manufacture a quote or describe a delayed/historical value as real-time.
 
+## Research engine activation status
+- Engines 1–2 (technical analysis and short-term momentum) now have a server endpoint using 80 daily OHLCV bars from Twelve Data for AAPL, MSFT, NVDA and XLE, with a 15-minute edge cache.
+- Technical outputs include SMA20/SMA50, RSI14, ATR14, MACD and 20-session support/resistance. Momentum outputs include 20-session breakout, relative volume and ATR percentage; the existing long-setup score and risk levels are exposed as research-only values.
+- The remaining six engines are still pending. Gold/oil OHLCV history is not yet connected to the research engines. Engine outputs are not real-time guarantees, trading instructions, or validated forecasts.
+
 ## Not connected yet
 Massive Futures integration is implemented but requires the MASSIVE_API_KEY GitHub Actions secret before the Worker can retrieve data. The free Futures Basic tier returns historical session bars with an 8-hour delay and a 5-requests-per-minute limit. The app never labels these as live prices. Stock quotes still require TWELVE_DATA_API_KEY. No broker, SEC/public-official disclosure feed, authentication, cloud database, or automated forecast engine is connected. Demo records are stored in the current browser only.
 
