@@ -229,7 +229,7 @@ export default {
           });
           if (!response.ok) throw new Error("HTTP " + response.status);
           const csv = await response.text();
-          const lines = csv.trim().split(/\\r?\\n/);
+          const lines = csv.trim().split(/\r?\n/);
           if (lines.length < 2 || !/^observation_date,/i.test(lines[0])) {
             throw new Error("FRED החזיר קובץ CSV לא תקין");
           }
