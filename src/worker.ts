@@ -119,6 +119,21 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
+    if (url.pathname === "/api/universe") {
+      if (request.method !== "GET") {
+        return Response.json({ error: "Method not allowed." }, { status: 405 });
+      }
+      return Response.json({
+        assets: ASSET_UNIVERSE.map(([symbol, name, category, horizon]) => ({ symbol, name, category, horizon })),
+        configuredCount: ASSET_UNIVERSE.length,
+        dynamicSlots: DYNAMIC_WATCH_SLOTS,
+        maximum: MAX_TRACKED_ASSETS,
+        connectedSymbols: CURRENTLY_CONNECTED_SYMBOLS,
+        connectedCount: CURRENTLY_CONNECTED_SYMBOLS.length,
+        note: "רישום נכסים אינו מעיד על זמינות מחיר. רק connectedSymbols מחוברים כרגע לספק פעיל; יתר הנכסים לא יקבלו מחיר מומצא."
+      }, { headers: { "Cache-Control": "public, max-age=3600, s-maxage=3600" } });
+    }
+
     if (url.pathname === "/api/health") {
       return Response.json(
         {

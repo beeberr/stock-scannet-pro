@@ -15,6 +15,11 @@ Hebrew RTL investment research and paper-trading workspace.
 - Regression tests for technical indicators, insufficient history, malformed candles, chronological ordering, signal scoring, position sizing and exit rules.
 - Explicit warning labels: no live quotes, no fabricated scores, and no implied recommendations.
 
+## Asset universe and provider boundaries
+The research watchlist is capped at 50 assets: 20 equities, 8 commodities, 8 indices and 9 ETFs (45 configured initially), with 5 reserved rotating slots. The shared registry is served by `/api/universe`; duplicate symbols and cap drift fail fast at module initialization. A configured asset is not necessarily price-connected.
+
+Only AAPL, MSFT, NVDA and XLE currently have a stock-quote adapter (Twelve Data); GC, SI, HG and CL currently have the Massive Futures adapter. Other watchlist assets remain visible but explicitly unconnected until a compatible free-tier provider and API credential are configured. The app must never manufacture a quote or describe a delayed/historical value as real-time.
+
 ## Not connected yet
 Massive Futures integration is implemented but requires the MASSIVE_API_KEY GitHub Actions secret before the Worker can retrieve data. The free Futures Basic tier returns historical session bars with an 8-hour delay and a 5-requests-per-minute limit. The app never labels these as live prices. Stock quotes still require TWELVE_DATA_API_KEY. No broker, SEC/public-official disclosure feed, authentication, cloud database, or automated forecast engine is connected. Demo records are stored in the current browser only.
 
