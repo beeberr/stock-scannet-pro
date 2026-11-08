@@ -29,3 +29,5 @@ jobs:
         run: npm run test:market
       - name: Test signal engine
         run: npm run test:signal
+      - name: Test Massive Futures provider
+        run: npm run test:massive

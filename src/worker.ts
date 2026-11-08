@@ -1,75 +1,118 @@
+import {
+  FUTURES_PRODUCTS,
+  normalizeFuturesQuote,
+  selectFrontContract,
+  type FuturesAggregate,
+  type FuturesContract
+} from './massiveFutures.js';
+
 interface Env {
   TWELVE_DATA_API_KEY?: string;
+  MASSIVE_API_KEY?: string;
   ASSETS: { fetch(request: Request): Promise<Response> };
 }
 
 const ALLOWED_SYMBOLS = new Set(["AAPL", "MSFT", "NVDA", "XLE"]);
+const MASSIVE_BASE_URL = "https://api.massive.com";
 
-const COMMODITIES = [
-  { key: "GC", label: "זהב", symbol: "GC=F" },
-  { key: "HG", label: "נחושת", symbol: "HG=F" },
-  { key: "CL", label: "נפט WTI", symbol: "CL=F" },
-  { key: "KC", label: "קפה", symbol: "KC=F" },
-  { key: "CC", label: "קקאו", symbol: "CC=F" },
-] as const;
+async function massiveJson<T>(path: string, apiKey: string): Promise<T> {
+  const response = await fetch(new URL(path, MASSIVE_BASE_URL), {
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${apiKey}`
+    },
+    signal: AbortSignal.timeout(12000)
+  });
 
-async function fetchYahooCommodity(item: (typeof COMMODITIES)[number]) {
-  const encoded = encodeURIComponent(item.symbol);
-  let lastError = "ספק הנתונים לא החזיר מחיר";
-  for (const host of ["query1.finance.yahoo.com", "query2.finance.yahoo.com"]) {
-    try {
-      const upstream = new URL(`https://${host}/v8/finance/chart/${encoded}`);
-      upstream.searchParams.set("range", "5d");
-      upstream.searchParams.set("interval", "1d");
-      const response = await fetch(upstream, {
-        headers: {
-          Accept: "application/json",
-          "User-Agent": "Mozilla/5.0 (compatible; StockScannerPro/1.0)",
-        },
-        signal: AbortSignal.timeout(12000),
-      });
-      const payload = await response.json() as {
-        chart?: {
-          result?: Array<{ meta?: Record<string, any> }>;
-          error?: { description?: string } | null;
-        };
-      };
-      const meta = payload.chart?.result?.[0]?.meta;
-      const price = Number(meta?.regularMarketPrice ?? meta?.previousClose);
-      const previous = Number(meta?.chartPreviousClose ?? meta?.previousClose);
-      if (!response.ok || !Number.isFinite(price) || price <= 0) {
-        lastError = payload.chart?.error?.description || `Yahoo Finance החזיר HTTP ${response.status}`;
-        continue;
-      }
-      const change = Number.isFinite(previous) && previous > 0 ? price - previous : null;
-      const percent = change !== null && previous > 0 ? (change / previous) * 100 : null;
-      return [item.key, {
-        label: item.label,
-        symbol: item.symbol,
-        name: meta?.shortName || meta?.longName || item.label,
-        price: String(price),
-        close: String(price),
-        previous_close: Number.isFinite(previous) ? String(previous) : undefined,
-        change: change === null ? undefined : change.toFixed(6),
-        percent_change: percent === null ? undefined : percent.toFixed(4),
-        currency: meta?.currency || "USD",
-        exchange: meta?.fullExchangeName || meta?.exchangeName || "Futures",
-        datetime: meta?.regularMarketTime ? new Date(meta.regularMarketTime * 1000).toISOString() : undefined,
-        available: true,
-        delayed: true,
-        source: "Yahoo Finance",
-      }] as const;
-    } catch (error) {
-      lastError = error instanceof Error ? error.message : "שגיאת חיבור לספק הנתונים";
-    }
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    throw new Error(`Massive החזיר תשובה שאינה JSON (HTTP ${response.status})`);
   }
-  return [item.key, {
-    label: item.label,
-    symbol: item.symbol,
+
+  if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      throw new Error("Massive דחה את הבקשה. יש לבדוק שהמפתח תקין ושהחשבון כולל Futures API.");
+    }
+    if (response.status === 429) {
+      throw new Error("הגענו למכסת הבקשות של Massive. הנתונים לא רועננו.");
+    }
+    throw new Error(`Massive החזיר שגיאת HTTP ${response.status}`);
+  }
+
+  const data = payload as { status?: string; error?: string; message?: string };
+  if (data?.status === "ERROR" || data?.error) {
+    throw new Error(typeof data.message === "string" ? data.message : "Massive החזיר שגיאת נתונים");
+  }
+  return payload as T;
+}
+
+async function fetchMassiveCommodities(apiKey: string) {
+  const date = new Date().toISOString().slice(0, 10);
+  const contractUrl = new URL("/futures/v1/contracts", MASSIVE_BASE_URL);
+  contractUrl.searchParams.set("product_code.any_of", FUTURES_PRODUCTS.map(item => item.productCode).join(","));
+  contractUrl.searchParams.set("date", date);
+  contractUrl.searchParams.set("active", "true");
+  contractUrl.searchParams.set("type", "single");
+  contractUrl.searchParams.set("limit", "1000");
+  contractUrl.searchParams.set("sort", "product_code.asc");
+
+  const contractsPayload = await massiveJson<{ results?: FuturesContract[] }>(
+    contractUrl.pathname + contractUrl.search,
+    apiKey
+  );
+  const contracts = Array.isArray(contractsPayload.results) ? contractsPayload.results : [];
+
+  const entries = await Promise.all(FUTURES_PRODUCTS.map(async product => {
+    const contract = selectFrontContract(contracts, product.productCode, 14);
+    if (!contract?.ticker) {
+      return [product.key, {
+        label: product.label,
+        productCode: product.productCode,
+        exchange: product.exchange,
+        available: false,
+        source: "Massive Futures",
+        error: "לא נמצא חוזה פעיל מתאים. לא נבחר סימול חלופי ולא הומצא מחיר."
+      }] as const;
+    }
+
+    try {
+      const barsUrl = new URL(`/futures/v1/aggs/${encodeURIComponent(contract.ticker)}`, MASSIVE_BASE_URL);
+      barsUrl.searchParams.set("resolution", "1session");
+      barsUrl.searchParams.set("limit", "2");
+      barsUrl.searchParams.set("sort", "window_start.desc");
+      const barsPayload = await massiveJson<{ results?: FuturesAggregate[] }>(
+        barsUrl.pathname + barsUrl.search,
+        apiKey
+      );
+      const quote = normalizeFuturesQuote(product, contract, Array.isArray(barsPayload.results) ? barsPayload.results : []);
+      return [product.key, quote] as const;
+    } catch (error) {
+      return [product.key, {
+        label: product.label,
+        productCode: product.productCode,
+        exchange: product.exchange,
+        symbol: contract.ticker,
+        available: false,
+        source: "Massive Futures",
+        error: error instanceof Error ? error.message : "שגיאה בקבלת נתוני החוזה"
+      }] as const;
+    }
+  }));
+
+  return Object.fromEntries(entries);
+}
+
+function unavailableCommodities(message: string) {
+  return Object.fromEntries(FUTURES_PRODUCTS.map(product => [product.key, {
+    label: product.label,
+    productCode: product.productCode,
+    exchange: product.exchange,
     available: false,
-    error: lastError,
-    source: "Yahoo Finance",
-  }] as const;
+    source: "Massive Futures",
+    error: message
+  }]));
 }
 
 export default {
@@ -78,8 +121,16 @@ export default {
 
     if (url.pathname === "/api/health") {
       return Response.json(
-        { status: "ok", version: "2026-11-08-yahoo-commodities", assets: "bound" },
-        { headers: { "Cache-Control": "no-store" } },
+        {
+          status: "ok",
+          version: "2026-11-08-massive-futures",
+          assets: "bound",
+          providers: {
+            massiveFutures: env.MASSIVE_API_KEY ? "configured" : "missing-key",
+            twelveData: env.TWELVE_DATA_API_KEY ? "configured" : "missing-key"
+          }
+        },
+        { headers: { "Cache-Control": "no-store" } }
       );
     }
 
@@ -87,18 +138,49 @@ export default {
       if (request.method !== "GET") {
         return Response.json({ error: "Method not allowed." }, { status: 405 });
       }
-      const results = await Promise.all(COMMODITIES.map(fetchYahooCommodity));
-      const available = results.filter(([, quote]) => quote.available).length;
-      return Response.json(
-        {
-          data: Object.fromEntries(results),
+
+      if (!env.MASSIVE_API_KEY?.trim()) {
+        return Response.json({
+          data: unavailableCommodities("מפתח Massive חסר. יש להגדיר MASSIVE_API_KEY כסוד ב-Cloudflare Worker."),
+          provider: "Massive Futures",
+          providerConfigured: false,
+          delay: "מסלול Basic החינמי מספק נתונים היסטוריים בעיכוב של 8 שעות, לא נתוני זמן אמת.",
           fetchedAt: new Date().toISOString(),
-          source: "Yahoo Finance (futures; delayed quotes)",
+          available: 0,
+          total: FUTURES_PRODUCTS.length
+        }, { headers: { "Cache-Control": "no-store" } });
+      }
+
+      try {
+        const data = await fetchMassiveCommodities(env.MASSIVE_API_KEY.trim());
+        const available = Object.values(data).filter((quote) => (quote as { available?: boolean }).available).length;
+        return Response.json({
+          data,
+          provider: "Massive Futures",
+          providerConfigured: true,
+          planNote: "במסלול Futures Basic החינמי הנתונים היסטוריים בעיכוב של 8 שעות.",
+          contractSelection: "החוזה הפעיל הקרוב לפקיעה עם מרווח של 14 ימים לפחות; בחירה זו אינה מבוססת על נפח מסחר.",
+          fetchedAt: new Date().toISOString(),
           available,
-          total: COMMODITIES.length,
-        },
-        { headers: { "Cache-Control": "public, max-age=30, s-maxage=30" } },
-      );
+          total: FUTURES_PRODUCTS.length
+        }, {
+          headers: { "Cache-Control": "public, max-age=240, s-maxage=240" }
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "ספק Massive אינו זמין כרגע.";
+        return Response.json({
+          data: unavailableCommodities(message),
+          provider: "Massive Futures",
+          providerConfigured: true,
+          error: message,
+          fetchedAt: new Date().toISOString(),
+          available: 0,
+          total: FUTURES_PRODUCTS.length
+        }, {
+          status: 502,
+          headers: { "Cache-Control": "no-store" }
+        });
+      }
     }
 
     if (url.pathname === "/api/quotes") {
@@ -110,7 +192,7 @@ export default {
       if (!key) {
         return Response.json(
           { error: "Market data secret is missing from this Worker. Add TWELVE_DATA_API_KEY to Worker secrets." },
-          { status: 503 },
+          { status: 503 }
         );
       }
 
@@ -131,7 +213,7 @@ export default {
 
           const response = await fetch(upstream, {
             headers: { Accept: "application/json" },
-            signal: AbortSignal.timeout(10000),
+            signal: AbortSignal.timeout(10000)
           });
           const data = await response.json() as Record<string, unknown>;
 
@@ -147,12 +229,12 @@ export default {
 
         return Response.json(
           { data: Object.fromEntries(entries), fetchedAt: new Date().toISOString(), source: "Twelve Data" },
-          { headers: { "Cache-Control": "public, max-age=20, s-maxage=20" } },
+          { headers: { "Cache-Control": "public, max-age=20, s-maxage=20" } }
         );
       } catch (error) {
         return Response.json(
           { error: error instanceof Error ? error.message : "Market data provider is temporarily unavailable." },
-          { status: 502 },
+          { status: 502 }
         );
       }
     }
@@ -162,13 +244,13 @@ export default {
       const headers = new Headers(assetResponse.headers);
       headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
       headers.set("Pragma", "no-cache");
-      headers.set("X-Stock-Scanner-Version", "2026-11-08-yahoo-commodities");
+      headers.set("X-Stock-Scanner-Version", "2026-11-08-massive-futures");
       return new Response(assetResponse.body, {
         status: assetResponse.status,
         statusText: assetResponse.statusText,
-        headers,
+        headers
       });
     }
     return assetResponse;
-  },
+  }
 };
