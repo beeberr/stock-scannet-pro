@@ -13,7 +13,7 @@ export function parseFredCsv(csv: string): MacroObservation[] {
 }
 export function summarizeMacroSeries(series: MacroSeries) {
   const rows = series.observations;
-  const latest = rows.at(-1);
+  const latest = rows[rows.length - 1];
   const prior = rows.length > 20 ? rows[rows.length - 21] : rows[0];
   if (!latest) return { key: series.key, label: series.label, unit: series.unit, status: "UNAVAILABLE", latest: null, change: null, changePercent: null, asOf: null, observations: 0 };
   const change = prior ? latest.value - prior.value : null;
