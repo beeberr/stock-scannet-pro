@@ -454,10 +454,38 @@ export default {
         return Response.json({ error: "ניתן לבקש עד חמש מניות מתוך מאגר המניות." }, { status: 400 });
       }
       if (!env.SEC_USER_AGENT?.trim()) {
+        const finnhubKey = env.FINNHUB_API_KEY?.trim();
+        if (finnhubKey) {
+          const to = new Date();
+          const from = new Date(to.getTime() - 90 * 86400000);
+          const day = (d: Date) => d.toISOString().slice(0, 10);
+          const entries = await Promise.all(symbols.map(async symbol => {
+            try {
+              const endpoint = new URL("https://finnhub.io/api/v1/stock/filings");
+              endpoint.searchParams.set("symbol", symbol);
+              endpoint.searchParams.set("from", day(from));
+              endpoint.searchParams.set("to", day(to));
+              const response = await fetch(endpoint, { headers: { Accept: "application/json", "X-Finnhub-Token": finnhubKey }, signal: AbortSignal.timeout(12000) });
+              if (!response.ok) throw new Error("Finnhub filings HTTP " + response.status);
+              const payload = await response.json() as unknown;
+              const filings = Array.isArray(payload) ? payload.slice(0, 20) : [];
+              return [symbol, { symbol, status: filings.length ? "READY" : "NO_RECENT_MATCHES", source: "Finnhub filings", filings }] as const;
+            } catch (error) {
+              return [symbol, { symbol, status: "UNAVAILABLE", source: "Finnhub filings", error: error instanceof Error ? error.message : "שגיאת ספק" }] as const;
+            }
+          }));
+          const data = Object.fromEntries(entries);
+          return Response.json({
+            engine: "public-disclosures",
+            status: entries.some(([, row]) => row.status === "READY") ? "READY" : "UNAVAILABLE",
+            provider: "Finnhub filings", providerConfigured: true, fetchedAt: new Date().toISOString(), data,
+            note: "מוצגים דיווחי חברות כפי שסופקו על ידי Finnhub. לחיבור ישיר למקור SEC EDGAR יש להגדיר SEC_USER_AGENT תקין. אין כאן גילויי עסקאות של נבחרי ציבור."
+          }, { headers: { "Cache-Control": "public, max-age=1800, s-maxage=1800" } });
+        }
         return Response.json({
           engine: "public-disclosures", status: "UNAVAILABLE", provider: "SEC EDGAR",
           providerConfigured: false, data: {},
-          error: "חסר SEC_USER_AGENT. יש להגדיר ערך זיהוי תקין הכולל שם אפליקציה וכתובת קשר לפי כללי SEC."
+          error: "חסר SEC_USER_AGENT וגם לא הוגדר מפתח Finnhub לשימוש כחלופה."
         }, { headers: { "Cache-Control": "no-store" } });
       }
       const cacheKey = new Request(new URL("/api/disclosures?provider=sec-edgar-v1&symbols=" + symbols.slice().sort().join(","), url.origin), { method: "GET" });
