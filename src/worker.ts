@@ -215,7 +215,6 @@ export default {
         ["usd_broad", "מדד דולר רחב משוקלל סחר", "מדד", "DTWEXBGS"],
         ["crude_inventory", "מלאי נפט גולמי בארה\"ב כולל SPR", "אלפי חביות", "WCESTUS1"],
         ["wti_spot", "מחיר ספוט נפט WTI", "דולר לחבית", "DCOILWTICO"],
-        ["gold_fix", "מחיר קיבוע זהב בלונדון AM", "דולר לאונקיה", "GOLDAMGBD228NLBM"]
       ] as const;
       try {
         const rows = await Promise.all(definitions.map(async ([key,label,unit,id]) => {
