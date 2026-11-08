@@ -139,6 +139,11 @@ export default {
         return Response.json({ error: "Method not allowed." }, { status: 405 });
       }
 
+      const cacheKey = new Request(new URL("/api/commodities?provider=massive-v1", url.origin), { method: "GET" });
+      const edgeCache = (globalThis as unknown as { caches: { default: Cache } }).caches.default;
+      const cached = await edgeCache.match(cacheKey);
+      if (cached) return cached;
+
       if (!env.MASSIVE_API_KEY?.trim()) {
         return Response.json({
           data: unavailableCommodities("מפתח Massive חסר. יש להגדיר MASSIVE_API_KEY כסוד ב-Cloudflare Worker."),
@@ -154,7 +159,7 @@ export default {
       try {
         const data = await fetchMassiveCommodities(env.MASSIVE_API_KEY.trim());
         const available = Object.values(data).filter((quote) => (quote as { available?: boolean }).available).length;
-        return Response.json({
+        const response = Response.json({
           data,
           provider: "Massive Futures",
           providerConfigured: true,
@@ -166,6 +171,8 @@ export default {
         }, {
           headers: { "Cache-Control": "public, max-age=240, s-maxage=240" }
         });
+        await edgeCache.put(cacheKey, response.clone());
+        return response;
       } catch (error) {
         const message = error instanceof Error ? error.message : "ספק Massive אינו זמין כרגע.";
         return Response.json({
