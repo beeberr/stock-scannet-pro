@@ -1,3 +1,5 @@
+import { analyzeTechnical } from './marketAnalysis.js';
+import { assessLongSetup } from './signalEngine.js';
 import { ASSET_UNIVERSE, MAX_TRACKED_ASSETS, DYNAMIC_WATCH_SLOTS, CURRENTLY_CONNECTED_SYMBOLS } from './assetUniverse.js';
 import {
   FUTURES_PRODUCTS,
@@ -119,6 +121,76 @@ function unavailableCommodities(message: string) {
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
+
+
+    if (url.pathname === "/api/engines") {
+      if (request.method !== "GET") return Response.json({ error: "Method not allowed." }, { status: 405 });
+      const key = env.TWELVE_DATA_API_KEY?.trim();
+      if (!key) return Response.json({ error: "מפתח Twelve Data חסר ב-Worker." }, { status: 503 });
+      const symbols = (url.searchParams.get("symbols") || "AAPL,MSFT,NVDA,XLE")
+        .split(",").map(value => value.trim().toUpperCase()).filter(Boolean);
+      if (!symbols.length || symbols.length > 4 || symbols.some(symbol => !ALLOWED_SYMBOLS.has(symbol))) {
+        return Response.json({ error: "ניתן לנתח עד ארבעה סימולים מחוברים: AAPL, MSFT, NVDA, XLE." }, { status: 400 });
+      }
+      const cacheKey = new Request(new URL("/api/engines?provider=twelvedata-v1&symbols=" + symbols.slice().sort().join(","), url.origin), { method: "GET" });
+      const edgeCache = (globalThis as unknown as { caches: { default: Cache } }).caches.default;
+      const cached = await edgeCache.match(cacheKey);
+      if (cached) return cached;
+      try {
+        const entries = await Promise.all(symbols.map(async symbol => {
+          const upstream = new URL("https://api.twelvedata.com/time_series");
+          upstream.searchParams.set("symbol", symbol);
+          upstream.searchParams.set("interval", "1day");
+          upstream.searchParams.set("outputsize", "80");
+          upstream.searchParams.set("order", "ASC");
+          upstream.searchParams.set("apikey", key);
+          const response = await fetch(upstream, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(12000) });
+          const payload = await response.json() as { status?: string; code?: number; message?: string; values?: Array<Record<string, string>>; meta?: Record<string, unknown> };
+          if (!response.ok || payload.status === "error" || payload.code !== undefined || !Array.isArray(payload.values)) {
+            throw new Error(symbol + ": " + (payload.message || "Twelve Data לא החזיר היסטוריית OHLCV תקינה"));
+          }
+          const candles = payload.values.map(row => ({
+            time: String(row.datetime || ""),
+            open: Number(row.open), high: Number(row.high), low: Number(row.low),
+            close: Number(row.close), volume: Number(row.volume ?? 0)
+          })).sort((a,b) => Date.parse(a.time) - Date.parse(b.time));
+          const technical = analyzeTechnical(candles);
+          const latest = candles[candles.length - 1];
+          const setup = assessLongSetup(symbol, candles, { equity: 10000, riskPercent: 0.5, rewardRisk: 2 });
+          const lookback = candles.slice(-21, -1);
+          const resistance = lookback.length ? Math.max(...lookback.map(c => c.high)) : null;
+          const support = lookback.length ? Math.min(...lookback.map(c => c.low)) : null;
+          const avgVolume = lookback.length ? lookback.reduce((sum,c) => sum + c.volume, 0) / lookback.length : null;
+          const volumeRatio = avgVolume && latest ? latest.volume / avgVolume : null;
+          const breakout = resistance !== null && latest ? latest.close > resistance : false;
+          const momentumStatus = candles.length >= 50 ? "READY" : "INSUFFICIENT_DATA";
+          return [symbol, {
+            source: "Twelve Data", interval: "1day", delayedOrLive: "לפי זמינות ומגבלות תוכנית הספק",
+            candles: candles.length, asOf: technical.asOf, lastPrice: latest?.close ?? null,
+            technical: { ...technical, support20: support, resistance20: resistance },
+            momentum: {
+              status: momentumStatus, breakout20: breakout, averageVolume20: avgVolume,
+              latestVolume: latest?.volume ?? null, relativeVolume: volumeRatio,
+              atrPercent: latest && technical.atr14 ? Number((technical.atr14 / latest.close * 100).toFixed(3)) : null,
+              signal: setup.signal, score: setup.score, entryReference: setup.entryReference,
+              stopLoss: setup.stopLoss, takeProfit: setup.takeProfit, riskReward: setup.riskReward,
+              suggestedQuantity: setup.suggestedQuantity, reasons: setup.reasons
+            }
+          }] as const;
+        }));
+        const body = Response.json({
+          fetchedAt: new Date().toISOString(), source: "Twelve Data",
+          activeEngines: ["technical", "momentum"],
+          plannedEngines: ["value", "macro", "gold-oil", "indices-sectors", "news-events", "public-disclosures"],
+          data: Object.fromEntries(entries),
+          note: "ניתוח טכני ומומנטום מחושבים מנרות יומיים שהתקבלו מהספק. תוצאות הן מחקריות בלבד, אינן תחזית או הוראת מסחר."
+        }, { headers: { "Cache-Control": "public, max-age=900, s-maxage=900" } });
+        await edgeCache.put(cacheKey, body.clone());
+        return body;
+      } catch (error) {
+        return Response.json({ error: error instanceof Error ? error.message : "שגיאה באיסוף נתוני ניתוח", source: "Twelve Data" }, { status: 502, headers: { "Cache-Control": "no-store" } });
+      }
+    }
 
     if (url.pathname === "/api/universe") {
       if (request.method !== "GET") {
