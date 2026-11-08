@@ -11,9 +11,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
       - run: npm install
       - run: npm run test:paper
       - run: npm run test:market
       - run: npm run test:signal
+      - run: npm run test:massive
       - run: npm run build
