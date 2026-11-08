@@ -643,17 +643,25 @@ export default {
       const edgeCache = (globalThis as unknown as { caches: { default: Cache } }).caches.default;
       const cached = await edgeCache.match(cacheKey);
       if (cached) return cached;
+      let marketstackBatch: Promise<Map<string, Record<string, unknown>>> | undefined;
       const fetchMarketstack = async (symbol: string) => {
         if (!marketstackKey) throw new Error("Marketstack אינו מוגדר");
-        const endpoint = new URL("https://api.marketstack.com/v2/eod/latest");
-        endpoint.searchParams.set("symbols", symbol);
-        endpoint.searchParams.set("access_key", marketstackKey);
-        const response = await fetch(endpoint, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(12000) });
-        const payload = await response.json() as { data?: Array<Record<string, unknown>>; error?: { message?: string } };
-        const row = Array.isArray(payload.data) ? payload.data.find(item => String(item.symbol || "").toUpperCase() === symbol) || payload.data[0] : null;
+        marketstackBatch ??= (async () => {
+          const endpoint = new URL("https://api.marketstack.com/v2/eod/latest");
+          endpoint.searchParams.set("symbols", symbols.join(","));
+          endpoint.searchParams.set("access_key", marketstackKey);
+          const response = await fetch(endpoint, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(15000) });
+          const payload = await response.json() as { data?: Array<Record<string, unknown>>; error?: { message?: string } };
+          if (!response.ok || !Array.isArray(payload.data)) {
+            throw new Error("Marketstack HTTP " + response.status + (payload.error?.message ? ": " + payload.error.message : " או תשובה לא תקינה"));
+          }
+          return new Map(payload.data.map(row => [String(row.symbol || "").toUpperCase(), row]));
+        })();
+        const rows = await marketstackBatch;
+        const row = rows.get(symbol);
         const close = Number(row?.close);
-        if (!response.ok || !row || !Number.isFinite(close) || close <= 0) {
-          throw new Error("Marketstack HTTP " + response.status + (payload.error?.message ? ": " + payload.error.message : " או נתון סגירה חסר"));
+        if (!row || !Number.isFinite(close) || close <= 0) {
+          throw new Error("Marketstack לא החזיר מחיר סגירה תקין ל-" + symbol);
         }
         return { symbol, price: close, name: symbol, asOf: row.date ?? null, source: "Marketstack EOD", delayed: true, status: "READY" };
       };
