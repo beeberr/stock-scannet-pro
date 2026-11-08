@@ -13,6 +13,9 @@ import {
 interface Env {
   TWELVE_DATA_API_KEY?: string;
   MASSIVE_API_KEY?: string;
+  FINNHUB_API_KEY?: string;
+  FMP_API_KEY?: string;
+  SEC_USER_AGENT?: string;
   ASSETS: { fetch(request: Request): Promise<Response> };
 }
 
@@ -335,6 +338,219 @@ export default {
       return response;
     }
 
+
+    if (url.pathname === "/api/value") {
+      if (request.method !== "GET") return Response.json({ error: "Method not allowed." }, { status: 405 });
+      const key = env.FMP_API_KEY?.trim();
+      if (!key) return Response.json({ engine: "value", status: "UNAVAILABLE", provider: "FMP", providerConfigured: false, data: {}, error: "מפתח FMP אינו מוגדר ב-Worker." }, { headers: { "Cache-Control": "no-store" } });
+      const symbols = (url.searchParams.get("symbols") || "AAPL,MSFT,NVDA,JPM").split(",").map(s => s.trim().toUpperCase()).filter(Boolean);
+      const equitySymbols = new Set(ASSET_UNIVERSE.filter(asset => asset[2] === "מניה").map(asset => asset[0]));
+      if (!symbols.length || symbols.length > 8 || symbols.some(symbol => !equitySymbols.has(symbol))) {
+        return Response.json({ error: "ניתן לבקש עד שמונה מניות מתוך מאגר המניות." }, { status: 400 });
+      }
+      const cacheKey = new Request(new URL("/api/value?provider=fmp-stable-v1&symbols=" + symbols.slice().sort().join(","), url.origin), { method: "GET" });
+      const edgeCache = (globalThis as unknown as { caches: { default: Cache } }).caches.default;
+      const cached = await edgeCache.match(cacheKey);
+      if (cached) return cached;
+      const entries = await Promise.all(symbols.map(async symbol => {
+        try {
+          const fetchFmp = async (path: string) => {
+            const endpoint = new URL("https://financialmodelingprep.com/stable/" + path);
+            endpoint.searchParams.set("symbol", symbol);
+            endpoint.searchParams.set("apikey", key);
+            const response = await fetch(endpoint, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(12000) });
+            if (!response.ok) throw new Error("FMP HTTP " + response.status);
+            const payload = await response.json() as unknown;
+            if (!Array.isArray(payload) || !payload.length) throw new Error("FMP לא החזיר נתונים זמינים לסימול");
+            return payload[0] as Record<string, unknown>;
+          };
+          const [ratiosResult, statementsResult] = await Promise.allSettled([
+            fetchFmp("ratios-ttm"),
+            fetchFmp("income-statement?limit=5")
+          ]);
+          const ratios = ratiosResult.status === "fulfilled" ? ratiosResult.value : null;
+          const statement = statementsResult.status === "fulfilled" ? statementsResult.value : null;
+          const status = ratios || statement ? "READY" : "UNAVAILABLE";
+          return [symbol, {
+            symbol, status, source: "FMP",
+            asOf: String(ratios?.date || statement?.date || ""),
+            valuation: ratios ? {
+              pe: ratios.priceToEarningsRatioTTM ?? null,
+              priceToBook: ratios.priceToBookRatioTTM ?? null,
+              debtEquity: ratios.debtEquityRatioTTM ?? null,
+              currentRatio: ratios.currentRatioTTM ?? null,
+              returnOnEquity: ratios.returnOnEquityTTM ?? null,
+              netProfitMargin: ratios.netProfitMarginTTM ?? null
+            } : null,
+            latestFinancials: statement ? {
+              date: statement.date ?? null, revenue: statement.revenue ?? null,
+              netIncome: statement.netIncome ?? null, operatingIncome: statement.operatingIncome ?? null,
+              eps: statement.eps ?? null
+            } : null,
+            partial: !ratios || !statement,
+            error: !ratios && !statement ? [
+              ratiosResult.status === "rejected" ? String(ratiosResult.reason) : "",
+              statementsResult.status === "rejected" ? String(statementsResult.reason) : ""
+            ].filter(Boolean).join("; ") : null
+          }] as const;
+        } catch (error) {
+          return [symbol, { symbol, status: "UNAVAILABLE", source: "FMP", error: error instanceof Error ? error.message : "שגיאת ספק" }] as const;
+        }
+      }));
+      const data = Object.fromEntries(entries);
+      const response = Response.json({
+        engine: "value", status: entries.some(([, row]) => row.status === "READY") ? "READY" : "UNAVAILABLE",
+        provider: "FMP", providerConfigured: true, fetchedAt: new Date().toISOString(), data,
+        note: "מדדי הערכת שווי ודוחות פיננסיים בלבד; זמינות השדות תלויה בהרשאות תוכנית FMP. אין לראות בכך המלצת השקעה."
+      }, { headers: { "Cache-Control": "public, max-age=21600, s-maxage=21600" } });
+      await edgeCache.put(cacheKey, response.clone());
+      return response;
+    }
+
+    if (url.pathname === "/api/news") {
+      if (request.method !== "GET") return Response.json({ error: "Method not allowed." }, { status: 405 });
+      const key = env.FINNHUB_API_KEY?.trim();
+      if (!key) return Response.json({ engine: "news-events", status: "UNAVAILABLE", provider: "Finnhub", providerConfigured: false, news: [], earnings: [], error: "מפתח Finnhub אינו מוגדר ב-Worker." }, { headers: { "Cache-Control": "no-store" } });
+      const cacheKey = new Request(new URL("/api/news?provider=finnhub-v1", url.origin), { method: "GET" });
+      const edgeCache = (globalThis as unknown as { caches: { default: Cache } }).caches.default;
+      const cached = await edgeCache.match(cacheKey);
+      if (cached) return cached;
+      const to = new Date();
+      const from = new Date(to.getTime() - 7 * 86400000);
+      const day = (d: Date) => d.toISOString().slice(0, 10);
+      const requestFinnhub = async (path: string, params: Record<string, string>) => {
+        const endpoint = new URL("https://finnhub.io/api/v1/" + path);
+        for (const [name, value] of Object.entries(params)) endpoint.searchParams.set(name, value);
+        const response = await fetch(endpoint, { headers: { Accept: "application/json", "X-Finnhub-Token": key }, signal: AbortSignal.timeout(12000) });
+        if (!response.ok) throw new Error("Finnhub " + path + " HTTP " + response.status);
+        return response.json() as Promise<unknown>;
+      };
+      const [newsResult, earningsResult] = await Promise.allSettled([
+        requestFinnhub("news", { category: "general" }),
+        requestFinnhub("calendar/earnings", { from: day(from), to: day(to) })
+      ]);
+      const news = newsResult.status === "fulfilled" && Array.isArray(newsResult.value) ? newsResult.value.slice(0, 30) : [];
+      const earningsPayload = earningsResult.status === "fulfilled" ? earningsResult.value as { earningsCalendar?: unknown[] } : null;
+      const earnings = Array.isArray(earningsPayload?.earningsCalendar) ? earningsPayload.earningsCalendar.slice(0, 30) : [];
+      const status = news.length || earnings.length ? "READY" : "UNAVAILABLE";
+      const response = Response.json({
+        engine: "news-events", status, provider: "Finnhub", providerConfigured: true,
+        fetchedAt: new Date().toISOString(), news, earnings,
+        errors: {
+          news: newsResult.status === "rejected" ? String(newsResult.reason) : null,
+          earnings: earningsResult.status === "rejected" ? String(earningsResult.reason) : null
+        },
+        note: "חדשות ולוח דוחות; היקף ההיסטוריה, הכיסוי והשימוש תלויים בתוכנית Finnhub וברישיון."
+      }, { headers: { "Cache-Control": "public, max-age=900, s-maxage=900" } });
+      if (status === "READY") await edgeCache.put(cacheKey, response.clone());
+      return response;
+    }
+
+    if (url.pathname === "/api/disclosures") {
+      if (request.method !== "GET") return Response.json({ error: "Method not allowed." }, { status: 405 });
+      const symbols = (url.searchParams.get("symbols") || "AAPL,MSFT,NVDA").split(",").map(s => s.trim().toUpperCase()).filter(Boolean);
+      const equitySymbols = new Set(ASSET_UNIVERSE.filter(asset => asset[2] === "מניה").map(asset => asset[0]));
+      if (!symbols.length || symbols.length > 5 || symbols.some(symbol => !equitySymbols.has(symbol))) {
+        return Response.json({ error: "ניתן לבקש עד חמש מניות מתוך מאגר המניות." }, { status: 400 });
+      }
+      if (!env.SEC_USER_AGENT?.trim()) {
+        return Response.json({
+          engine: "public-disclosures", status: "UNAVAILABLE", provider: "SEC EDGAR",
+          providerConfigured: false, data: {},
+          error: "חסר SEC_USER_AGENT. יש להגדיר ערך זיהוי תקין הכולל שם אפליקציה וכתובת קשר לפי כללי SEC."
+        }, { headers: { "Cache-Control": "no-store" } });
+      }
+      const cacheKey = new Request(new URL("/api/disclosures?provider=sec-edgar-v1&symbols=" + symbols.slice().sort().join(","), url.origin), { method: "GET" });
+      const edgeCache = (globalThis as unknown as { caches: { default: Cache } }).caches.default;
+      const cached = await edgeCache.match(cacheKey);
+      if (cached) return cached;
+      try {
+        const headers = { Accept: "application/json", "User-Agent": env.SEC_USER_AGENT.trim() };
+        const tickerResponse = await fetch("https://www.sec.gov/files/company_tickers.json", { headers, signal: AbortSignal.timeout(12000) });
+        if (!tickerResponse.ok) throw new Error("SEC ticker directory HTTP " + tickerResponse.status);
+        const tickerPayload = await tickerResponse.json() as Record<string, { cik_str: number; ticker: string; title: string }>;
+        const tickerRows = Object.values(tickerPayload);
+        const entries = await Promise.all(symbols.map(async symbol => {
+          const company = tickerRows.find(row => row.ticker.toUpperCase() === symbol);
+          if (!company) return [symbol, { symbol, status: "UNAVAILABLE", error: "הסימול לא נמצא במפתח החברות של SEC." }] as const;
+          const cik = String(company.cik_str).padStart(10, "0");
+          try {
+            const response = await fetch("https://data.sec.gov/submissions/CIK" + cik + ".json", { headers, signal: AbortSignal.timeout(12000) });
+            if (!response.ok) throw new Error("SEC submissions HTTP " + response.status);
+            const payload = await response.json() as { filings?: { recent?: Record<string, unknown[]> } };
+            const recent = payload.filings?.recent || {};
+            const forms = Array.isArray(recent.form) ? recent.form as string[] : [];
+            const dates = Array.isArray(recent.filingDate) ? recent.filingDate as string[] : [];
+            const accessions = Array.isArray(recent.accessionNumber) ? recent.accessionNumber as string[] : [];
+            const documents = Array.isArray(recent.primaryDocument) ? recent.primaryDocument as string[] : [];
+            const items = forms.flatMap((form, index) => {
+              if (!["4", "4/A", "8-K", "SC 13D", "SC 13D/A", "SC 13G", "SC 13G/A"].includes(form)) return [];
+              const accession = accessions[index];
+              const document = documents[index];
+              if (!accession || !document) return [];
+              return [{
+                form, filingDate: dates[index] || null, accessionNumber: accession,
+                company: company.title,
+                url: "https://www.sec.gov/Archives/edgar/data/" + company.cik_str + "/" + accession.replace(/-/g, "") + "/" + document
+              }];
+            }).slice(0, 20);
+            return [symbol, { symbol, company: company.title, cik: company.cik_str, status: items.length ? "READY" : "NO_RECENT_MATCHES", source: "SEC EDGAR", filings: items }] as const;
+          } catch (error) {
+            return [symbol, { symbol, status: "UNAVAILABLE", error: error instanceof Error ? error.message : "SEC request failed" }] as const;
+          }
+        }));
+        const data = Object.fromEntries(entries);
+        const response = Response.json({
+          engine: "public-disclosures",
+          status: entries.some(([, row]) => row.status === "READY") ? "READY" : "UNAVAILABLE",
+          provider: "SEC EDGAR", providerConfigured: true, fetchedAt: new Date().toISOString(), data,
+          note: "SEC EDGAR מכסה דיווחי חברות ובעלי עניין כגון Form 4; הוא אינו מאגר גילויי עסקאות של נבחרי ציבור לפי STOCK Act."
+        }, { headers: { "Cache-Control": "public, max-age=1800, s-maxage=1800" } });
+        await edgeCache.put(cacheKey, response.clone());
+        return response;
+      } catch (error) {
+        return Response.json({
+          engine: "public-disclosures", status: "UNAVAILABLE", provider: "SEC EDGAR",
+          providerConfigured: true, data: {},
+          error: error instanceof Error ? error.message : "SEC EDGAR אינו זמין כרגע."
+        }, { status: 502, headers: { "Cache-Control": "no-store" } });
+      }
+    }
+
+    if (url.pathname === "/api/indices") {
+      if (request.method !== "GET") return Response.json({ error: "Method not allowed." }, { status: 405 });
+      const key = env.FMP_API_KEY?.trim();
+      if (!key) return Response.json({ engine: "indices-sectors", status: "UNAVAILABLE", provider: "FMP", providerConfigured: false, data: {}, error: "מפתח FMP אינו מוגדר ב-Worker." }, { headers: { "Cache-Control": "no-store" } });
+      const symbols = ["SPY", "QQQ", "DIA", "IWM", "XLF", "XLK", "XLE", "XLV", "XLI", "XLY", "XLP"];
+      const cacheKey = new Request(new URL("/api/indices?provider=fmp-quotes-v1", url.origin), { method: "GET" });
+      const edgeCache = (globalThis as unknown as { caches: { default: Cache } }).default;
+      const cached = await edgeCache.match(cacheKey);
+      if (cached) return cached;
+      const entries = await Promise.all(symbols.map(async symbol => {
+        try {
+          const endpoint = new URL("https://financialmodelingprep.com/stable/quote");
+          endpoint.searchParams.set("symbol", symbol);
+          endpoint.searchParams.set("apikey", key);
+          const response = await fetch(endpoint, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(12000) });
+          if (!response.ok) throw new Error("FMP HTTP " + response.status);
+          const payload = await response.json() as Array<Record<string, unknown>>;
+          const quote = Array.isArray(payload) ? payload[0] : null;
+          if (!quote || quote.price === undefined) throw new Error("FMP לא החזיר ציטוט תקין");
+          return [symbol, { symbol, price: quote.price, change: quote.change, changesPercentage: quote.changePercentage, volume: quote.volume, name: quote.name, asOf: quote.timestamp ?? null, source: "FMP", status: "READY" }] as const;
+        } catch (error) {
+          return [symbol, { symbol, status: "UNAVAILABLE", source: "FMP", error: error instanceof Error ? error.message : "שגיאת ספק" }] as const;
+        }
+      }));
+      const data = Object.fromEntries(entries);
+      const response = Response.json({
+        engine: "indices-sectors", status: entries.some(([, row]) => row.status === "READY") ? "READY" : "UNAVAILABLE",
+        provider: "FMP", providerConfigured: true, fetchedAt: new Date().toISOString(), data,
+        note: "ETF-ים משמשים כפרוקסי למדדים ולסקטורים; אין להסיק מהם רוחב שוק מלא או ביצועי מדד ללא התאמת הגדרה."
+      }, { headers: { "Cache-Control": "public, max-age": 900, "s-maxage": 900 } });
+      if (response.ok) await edgeCache.put(cacheKey, response.clone());
+      return response;
+    }
+
     if (url.pathname === "/api/universe") {
       if (request.method !== "GET") {
         return Response.json({ error: "Method not allowed." }, { status: 405 });
@@ -354,11 +570,14 @@ export default {
       return Response.json(
         {
           status: "ok",
-          version: "2026-11-08-macro-fred-eia-fallback",
+          version: "2026-11-08-multi-provider-engines",
           assets: "bound",
           providers: {
             massiveFutures: env.MASSIVE_API_KEY ? "configured" : "missing-key",
-            twelveData: env.TWELVE_DATA_API_KEY ? "configured" : "missing-key"
+            twelveData: env.TWELVE_DATA_API_KEY ? "configured" : "missing-key",
+            finnhub: env.FINNHUB_API_KEY ? "configured" : "missing-key",
+            fmp: env.FMP_API_KEY ? "configured" : "missing-key",
+            secEdgar: env.SEC_USER_AGENT ? "configured" : "missing-user-agent"
           }
         },
         { headers: { "Cache-Control": "no-store" } }
@@ -482,7 +701,7 @@ export default {
       const headers = new Headers(assetResponse.headers);
       headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
       headers.set("Pragma", "no-cache");
-      headers.set("X-Stock-Scanner-Version", "2026-11-08-macro-fred-eia-fallback");
+      headers.set("X-Stock-Scanner-Version", "2026-11-08-multi-provider-engines");
       return new Response(assetResponse.body, {
         status: assetResponse.status,
         statusText: assetResponse.statusText,
