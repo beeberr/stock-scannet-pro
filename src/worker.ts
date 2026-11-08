@@ -229,7 +229,7 @@ export default {
         }));
         const byKey = Object.fromEntries(rows.map(([key,series])=>[key,series]));
         const summarized = Object.fromEntries(rows.map(([key,series])=>{
-          const values=series.observations; const latest=values.at(-1); const prior=values.length>20?values[values.length-21]:values[0];
+          const values=series.observations; const latest=values[values.length - 1]; const prior=values.length>20?values[values.length-21]:values[0];
           const change=latest&&prior?latest.value-prior.value:null;
           return [key,{key,label:series.label,unit:series.unit,status:latest?(values.length>=2?"READY":"INSUFFICIENT_DATA"):"UNAVAILABLE",latest:latest?.value??null,change,changePercent:prior&&prior.value!==0&&change!==null?change/Math.abs(prior.value)*100:null,asOf:latest?.date??null,observations:values.length}];
         }));
