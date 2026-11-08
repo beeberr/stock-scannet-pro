@@ -235,8 +235,8 @@ export default {
           }
           const observations = lines.slice(1).flatMap(line => {
             const parts = line.split(",");
-            const date = parts[0]?.replace(/^\\"|\\"$/g, "");
-            const raw = parts[1]?.replace(/^\\"|\\"$/g, "");
+            const date = parts[0]?.replaceAll('"', "");
+            const raw = parts[1]?.replaceAll('"', "");
             const value = Number(raw);
             return date && raw && raw !== "." && Number.isFinite(value) ? [{ date, value }] : [];
           }).sort((a, b) => a.date.localeCompare(b.date));
