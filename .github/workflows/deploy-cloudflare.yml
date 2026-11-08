@@ -108,18 +108,50 @@ jobs:
           wranglerVersion: "4.158.0"
           command: deploy --config wrangler.jsonc
 
-      - name: Sync optional Massive Futures API secret
+      - name: Sync all market data provider secrets to Cloudflare
         env:
           MASSIVE_API_KEY: ${{ secrets.MASSIVE_API_KEY }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
+          FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
+          FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
+          EODHD_API_KEY: ${{ secrets.EODHD_API_KEY }}
+          ALPHA_VANTAGE_API_KEY: ${{ secrets.ALPHA_VANTAGE_API_KEY }}
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
         run: |
-          if [ -z "$MASSIVE_API_KEY" ]; then
-            echo "MASSIVE_API_KEY is not configured in GitHub; the app will safely show commodities as unavailable."
-          else
-            printf '%s' "$MASSIVE_API_KEY" | npx wrangler secret put MASSIVE_API_KEY --config wrangler.jsonc
-            echo "Massive Futures API secret synced to the Worker; secret value was not printed."
-          fi
+          set -euo pipefail
+          node --input-type=module <<'NODE' | npx wrangler secret bulk --config wrangler.jsonc
+          const names = [
+            "MASSIVE_API_KEY",
+            "TWELVE_DATA_API_KEY",
+            "FINNHUB_API_KEY",
+            "FMP_API_KEY",
+            "EODHD_API_KEY",
+            "ALPHA_VANTAGE_API_KEY",
+            "SEC_USER_AGENT"
+          ];
+          const payload = {};
+          const missing = [];
+          for (const name of names) {
+            const value = process.env[name] ?? "";
+            if (!value) {
+              missing.push(name);
+              continue;
+            }
+            if (value !== value.trim() || /[\\r\\n]/.test(value)) {
+              console.error(name + " contains leading/trailing whitespace or a line break; refusing to sync it.");
+              process.exit(1);
+            }
+            payload[name] = value;
+          }
+          if (!payload.MASSIVE_API_KEY) {
+            console.error("MASSIVE_API_KEY is required for the commodities engine; refusing deployment.");
+            process.exit(1);
+          }
+          console.error("Provider secrets present: " + Object.keys(payload).join(", "));
+          if (missing.length) console.error("Provider secrets absent from GitHub (existing Cloudflare values, if any, are left unchanged): " + missing.join(", "));
+          process.stdout.write(JSON.stringify(payload));
+          NODE
+          echo "All configured market-data secrets synced to Cloudflare. Secret values were not printed."
 
       - name: Check deployed website
         run: |
@@ -217,7 +249,22 @@ jobs:
           }
           console.log("PASS /api/health: Massive Futures credential is configured.");
 
-          console.log("SKIP /api/quotes provider check: deployment is configured to use only Cloudflare and Massive credentials.");
+          const providerNames = ["massiveFutures", "twelveData", "finnhub", "fmp", "eodhd", "alphaVantage", "secEdgar"];
+          const missingProviders = providerNames.filter(name => health.providers?.[name] !== "configured");
+          if (missingProviders.length) {
+            throw new Error("/api/health: provider secrets are missing in Cloudflare: " + missingProviders.join(", "));
+          }
+          console.log("PASS /api/health: all seven market-data provider secrets are configured.");
+
+          const quotes = await getJson("/api/quotes");
+          if (quotes.available !== 4 || quotes.total !== 4 || !quotes.data ||
+              ["AAPL", "MSFT", "NVDA", "XLE"].some(symbol => {
+                const quote = quotes.data[symbol];
+                return !quote || quote.status === "UNAVAILABLE" || quote.close === undefined || quote.close === null;
+              })) {
+            throw new Error("/api/quotes: expected four valid quotes; received " + String(quotes.available) + "/" + String(quotes.total) + ".");
+          }
+          console.log("PASS /api/quotes: four valid market quotes returned. Provider: " + String(quotes.source) + ".");
 
 
           const commodities = await getJson("/api/commodities");
