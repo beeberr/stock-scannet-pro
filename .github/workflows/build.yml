@@ -19,4 +19,5 @@ jobs:
       - run: npm run test:massive
       - run: npm run test:universe
       - run: npm run test:engines
+      - run: npm run test:macro
       - run: npm run build
