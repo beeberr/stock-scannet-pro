@@ -31,3 +31,5 @@ jobs:
         run: npm run test:signal
       - name: Test Massive Futures provider
         run: npm run test:massive
+      - name: Test macro research
+        run: npm run test:macro
