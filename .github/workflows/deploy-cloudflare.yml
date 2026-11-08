@@ -47,7 +47,7 @@ jobs:
           const accountId = process.env.CLOUDFLARE_ACCOUNT_ID ?? "";
 
           // Report only safe metadata; never print the token or authorization header.
-          console.log(`Cloudflare token diagnostics: present=${Boolean(token)}, length=${token.length}, containsWhitespace=${/\\s/.test(token)}, containsQuotes=${/[\\"']/ .test(token)}, containsNonAscii=${/[^\\x20-\\x7E]/.test(token)}, startsWithBearer=${/^Bearer\\s/i.test(token)}.`);
+          console.log(`Cloudflare token diagnostics: present=${Boolean(token)}, length=${token.length}, containsWhitespace=/\s/.test(token), containsQuotes=/["\']/ .test(token), containsNonAscii=/[^\x20-\x7E]/.test(token), startsWithBearer=/^Bearer\s/i.test(token)}.`);
 
           if (!token) {
             console.error("Cloudflare authentication check failed: CLOUDFLARE_API_TOKEN is missing or empty.");
