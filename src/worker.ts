@@ -221,7 +221,7 @@ export default {
           const response = await fetch("https://fred.stlouisfed.org/graph/fredgraph.csv?id=" + id, { headers: { Accept: "text/csv" }, signal: AbortSignal.timeout(10000) });
           if (!response.ok) throw new Error("FRED " + id + " HTTP " + response.status);
           const csv = await response.text();
-          const observations = csv.trim().split(/\\r?\\n/).slice(1).flatMap(line => {
+          const observations = csv.trim().split(/\r?\n/).slice(1).flatMap(line => {
             const parts = line.split(","); const date = parts[0]?.replace(/^\"|\"$/g, ""); const raw = parts[1]?.replace(/^\"|\"$/g, ""); const value = Number(raw);
             return date && raw && raw !== "." && Number.isFinite(value) ? [{ date, value }] : [];
           }).sort((x,y)=>x.date.localeCompare(y.date));
