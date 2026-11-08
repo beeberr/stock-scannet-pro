@@ -697,7 +697,7 @@ export default {
       const ready = entries.filter(([, row]) => row.status === "READY").length;
       const sources = [...new Set(entries.map(([, row]) => row.source).filter(Boolean))];
       const response = Response.json({
-        engine: "indices-sectors", status: ready ? "READY" : "UNAVAILABLE",
+        engine: "indices-sectors", status: ready === symbols.length ? "READY" : ready > 0 ? "PARTIAL" : "UNAVAILABLE",
         provider: sources.join(" + ") || "FMP/Marketstack", providerConfigured: true,
         available: ready, total: symbols.length, fetchedAt: new Date().toISOString(), data,
         note: "ETF-ים משמשים כפרוקסי למדדים ולסקטורים. Marketstack מספק כאן נתוני סגירה יומיים בלבד, לא נתוני זמן אמת ולא מדידת רוחב שוק מלאה."
