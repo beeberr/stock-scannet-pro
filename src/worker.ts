@@ -772,7 +772,7 @@ export default {
         const available = Object.values(data).filter((quote) => (quote as { available?: boolean }).available).length;
         const fetchedAt = new Date().toISOString();
         const payload = {
-          status: available ? "READY" : "UNAVAILABLE",
+          status: available === FUTURES_PRODUCTS.length ? "READY" : available > 0 ? "PARTIAL" : "UNAVAILABLE",
           data,
           provider: "Massive Futures",
           providerConfigured: true,
