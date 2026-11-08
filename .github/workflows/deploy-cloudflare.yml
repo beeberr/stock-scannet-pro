@@ -121,6 +121,26 @@ jobs:
             echo "Massive Futures API secret synced to the Worker; secret value was not printed."
           fi
 
+      - name: Sync optional market data provider secrets
+        env:
+          TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
+          FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
+          FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
+          EODHD_API_KEY: ${{ secrets.EODHD_API_KEY }}
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          for name in TWELVE_DATA_API_KEY FINNHUB_API_KEY FMP_API_KEY EODHD_API_KEY SEC_USER_AGENT; do
+            value="${!name}"
+            if [ -n "$value" ]; then
+              printf '%s' "$value" | npx wrangler secret put "$name" --config wrangler.jsonc
+              echo "$name synced to Cloudflare Worker; value not printed."
+            else
+              echo "$name is not configured in GitHub; related engine will report provider unavailable."
+            fi
+          done
+
       - name: Check deployed website
         run: |
           node --input-type=module <<'NODE'
@@ -178,6 +198,30 @@ jobs:
             throw new Error("/api/macro: availability summary is malformed.");
           }
           console.log(`PASS /api/macro: all four macro series returned independently; ${macro.available}/4 currently available.`);
+
+          const value = await getJson("/api/value");
+          if (value.engine !== "value" || !["READY", "UNAVAILABLE"].includes(value.status) || !value.provider) {
+            throw new Error("/api/value: provider status response is malformed.");
+          }
+          console.log(`PASS /api/value: FMP/EODHD endpoint responds with explicit status (${value.status}).`);
+
+          const indices = await getJson("/api/indices");
+          if (indices.engine !== "indices-sectors" || !["READY", "UNAVAILABLE"].includes(indices.status) || !indices.provider) {
+            throw new Error("/api/indices: provider status response is malformed.");
+          }
+          console.log(`PASS /api/indices: FMP indices/sectors endpoint responds with explicit status (${indices.status}).`);
+
+          const news = await getJson("/api/news");
+          if (news.engine !== "news-events" || !["READY", "UNAVAILABLE"].includes(news.status) || !Array.isArray(news.news) || !Array.isArray(news.earnings)) {
+            throw new Error("/api/news: Finnhub news/events response is malformed.");
+          }
+          console.log(`PASS /api/news: Finnhub endpoint responds with explicit status (${news.status}).`);
+
+          const disclosures = await getJson("/api/disclosures");
+          if (disclosures.engine !== "public-disclosures" || !["READY", "UNAVAILABLE"].includes(disclosures.status) || !disclosures.provider) {
+            throw new Error("/api/disclosures: SEC/Finnhub response is malformed.");
+          }
+          console.log(`PASS /api/disclosures: official/fallback filings endpoint responds with explicit status (${disclosures.status}).`);
 
           const universe = await getJson("/api/universe");
           if (universe.configuredCount !== 45 || universe.maximum !== 50 || universe.dynamicSlots !== 5 || !Array.isArray(universe.assets) || universe.assets.length !== 45) {
