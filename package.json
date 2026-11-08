@@ -12,7 +12,8 @@
     "test:signal": "node scripts/test-signal-engine.mjs",
     "test:massive": "node scripts/test-massive-futures.mjs",
     "test:universe": "node scripts/test-asset-universe.mjs",
-    "test:engines": "node scripts/test-research-engines.mjs"
+    "test:engines": "node scripts/test-research-engines.mjs",
+    "test:macro": "node scripts/test-macro-research.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.3.4",

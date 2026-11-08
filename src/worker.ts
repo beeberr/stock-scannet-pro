@@ -204,6 +204,41 @@ export default {
     }
 
 
+    if (url.pathname === "/api/macro") {
+      if (request.method !== "GET") return Response.json({ error: "Method not allowed." }, { status: 405 });
+      const cacheKey = new Request(new URL("/api/macro?provider=fred-v1", url.origin), { method: "GET" });
+      const edgeCache = (globalThis as unknown as { caches: { default: Cache } }).caches.default;
+      const cached = await edgeCache.match(cacheKey);
+      if (cached) return cached;
+      const definitions = [
+        ["us_10y", "תשואת אג\"ח ארה\"ב ל-10 שנים", "%", "DGS10"],
+        ["usd_broad", "מדד דולר רחב משוקלל סחר", "מדד", "DTWEXBGS"],
+        ["crude_inventory", "מלאי נפט גולמי בארה\"ב כולל SPR", "אלפי חביות", "WCESTUS1"],
+        ["wti_spot", "מחיר ספוט נפט WTI", "דולר לחבית", "DCOILWTICO"],
+        ["gold_fix", "מחיר קיבוע זהב בלונדון AM", "דולר לאונקיה", "GOLDAMGBD228NLBM"]
+      ] as const;
+      try {
+        const rows = await Promise.all(definitions.map(async ([key,label,unit,id]) => {
+          const response = await fetch("https://fred.stlouisfed.org/graph/fredgraph.csv?id=" + id, { headers: { Accept: "text/csv" }, signal: AbortSignal.timeout(10000) });
+          if (!response.ok) throw new Error("FRED " + id + " HTTP " + response.status);
+          const csv = await response.text();
+          const observations = csv.trim().split(/\\r?\\n/).slice(1).flatMap(line => {
+            const parts = line.split(","); const date = parts[0]?.replace(/^\"|\"$/g, ""); const raw = parts[1]?.replace(/^\"|\"$/g, ""); const value = Number(raw);
+            return date && raw && raw !== "." && Number.isFinite(value) ? [{ date, value }] : [];
+          }).sort((x,y)=>x.date.localeCompare(y.date));
+          return [key,{key,label,unit,observations}] as const;
+        }));
+        const byKey = Object.fromEntries(rows.map(([key,series])=>[key,series]));
+        const summarized = Object.fromEntries(rows.map(([key,series])=>{
+          const values=series.observations; const latest=values.at(-1); const prior=values.length>20?values[values.length-21]:values[0];
+          const change=latest&&prior?latest.value-prior.value:null;
+          return [key,{key,label:series.label,unit:series.unit,status:latest?(values.length>=2?"READY":"INSUFFICIENT_DATA"):"UNAVAILABLE",latest:latest?.value??null,change,changePercent:prior&&prior.value!==0&&change!==null?change/Math.abs(prior.value)*100:null,asOf:latest?.date??null,observations:values.length}];
+        }));
+        const response=Response.json({source:"Federal Reserve Bank of St. Louis (FRED)",fetchedAt:new Date().toISOString(),series:summarized,note:"ההשוואה היא לתצפית לפני כ-20 פרסומים; תדירות הסדרות שונה. אין להסיק מכך תחזית מחיר."},{headers:{"Cache-Control":"public, max-age=1800, s-maxage=1800"}});
+        await edgeCache.put(cacheKey,response.clone()); return response;
+      } catch(error) { return Response.json({error:error instanceof Error?error.message:"נתוני FRED אינם זמינים",source:"FRED"},{status:502,headers:{"Cache-Control":"no-store"}}); }
+    }
+
     if (url.pathname === "/api/universe") {
       if (request.method !== "GET") {
         return Response.json({ error: "Method not allowed." }, { status: 405 });
