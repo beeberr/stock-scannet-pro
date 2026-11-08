@@ -224,13 +224,14 @@ jobs:
           if (value.engine !== "value" || !["READY", "UNAVAILABLE"].includes(value.status) || !value.provider) {
             throw new Error("/api/value: provider status response is malformed.");
           }
-          console.log(`PASS /api/value: FMP/EODHD endpoint responds with explicit status (${value.status}).`);
+          console.log(`PASS /api/value: ${value.provider} endpoint responds with explicit status (${value.status}).`);
 
           const indices = await getJson("/api/indices");
           if (indices.engine !== "indices-sectors" || !["READY", "PARTIAL", "UNAVAILABLE"].includes(indices.status) || !indices.provider || !indices.data || typeof indices.available !== "number" || indices.total !== 11) {
             throw new Error("/api/indices: provider status response is malformed.");
           }
-          console.log(`PASS /api/indices: FMP/Marketstack endpoint responds with explicit status (${indices.status}); ${indices.available}/${indices.total} ETF proxies available.`);
+          const indexSources = [...new Set(Object.values(indices.data).map(row => row?.source).filter(Boolean))];
+          console.log(`PASS /api/indices: ${indices.provider} endpoint responds with explicit status (${indices.status}); ${indices.available}/${indices.total} ETF proxies available; row sources: ${indexSources.join(", ") || "not reported"}.`);
 
           const news = await getJson("/api/news");
           if (news.engine !== "news-events" || !["READY", "UNAVAILABLE"].includes(news.status) || !Array.isArray(news.news) || !Array.isArray(news.earnings)) {
