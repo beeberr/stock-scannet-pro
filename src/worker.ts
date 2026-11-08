@@ -16,6 +16,7 @@ interface Env {
   FINNHUB_API_KEY?: string;
   FMP_API_KEY?: string;
   EODHD_API_KEY?: string;
+  ALPHA_VANTAGE_API_KEY?: string;
   SEC_USER_AGENT?: string;
   ASSETS: { fetch(request: Request): Promise<Response> };
 }
@@ -651,6 +652,7 @@ export default {
             finnhub: env.FINNHUB_API_KEY ? "configured" : "missing-key",
             fmp: env.FMP_API_KEY ? "configured" : "missing-key",
             eodhd: env.EODHD_API_KEY ? "configured" : "missing-key",
+            alphaVantage: env.ALPHA_VANTAGE_API_KEY ? "configured" : "missing-key",
             secEdgar: env.SEC_USER_AGENT ? "configured" : "missing-user-agent"
           }
         },
@@ -719,10 +721,11 @@ export default {
         return Response.json({ error: "Method not allowed." }, { status: 405 });
       }
 
-      const key = env.TWELVE_DATA_API_KEY?.trim();
-      if (!key) {
+      const twelveKey = env.TWELVE_DATA_API_KEY?.trim();
+      const alphaKey = env.ALPHA_VANTAGE_API_KEY?.trim();
+      if (!twelveKey && !alphaKey) {
         return Response.json(
-          { error: "Market data secret is missing from this Worker. Add TWELVE_DATA_API_KEY to Worker secrets." },
+          { error: "חסרים מפתחות TWELVE_DATA_API_KEY ו-ALPHA_VANTAGE_API_KEY ב-Worker." },
           { status: 503 }
         );
       }
@@ -736,38 +739,100 @@ export default {
         return Response.json({ error: "Unsupported or invalid symbols." }, { status: 400 });
       }
 
-      try {
-        const entries = await Promise.all(symbols.map(async (symbol) => {
-          const upstream = new URL("https://api.twelvedata.com/quote");
-          upstream.searchParams.set("symbol", symbol);
-          upstream.searchParams.set("apikey", key);
+      const cacheKey = new Request(new URL("/api/quotes?provider=twelve-alpha-v1&symbols=" + symbols.slice().sort().join(","), url.origin), { method: "GET" });
+      const edgeCache = (globalThis as unknown as { caches: { default: Cache } }).caches.default;
+      const cached = await edgeCache.match(cacheKey);
+      if (cached) return cached;
 
-          const response = await fetch(upstream, {
-            headers: { Accept: "application/json" },
-            signal: AbortSignal.timeout(10000)
-          });
-          const data = await response.json() as Record<string, unknown>;
+      const fetchTwelveData = async (symbol: string) => {
+        if (!twelveKey) throw new Error("Twelve Data key is not configured");
+        const upstream = new URL("https://api.twelvedata.com/quote");
+        upstream.searchParams.set("symbol", symbol);
+        upstream.searchParams.set("apikey", twelveKey);
+        const response = await fetch(upstream, {
+          headers: { Accept: "application/json" },
+          signal: AbortSignal.timeout(10000)
+        });
+        const data = await response.json() as Record<string, unknown>;
+        if (!response.ok || data.status === "error" || data.code !== undefined) {
+          const message = typeof data.message === "string" ? data.message : "Market data provider request failed.";
+          throw new Error(symbol + ": " + message);
+        }
+        if (typeof data.symbol !== "string" || data.close === undefined) {
+          throw new Error(symbol + ": provider returned an incomplete quote.");
+        }
+        return { ...data, source: "Twelve Data" };
+      };
 
-          if (!response.ok || data.status === "error" || data.code !== undefined) {
-            const message = typeof data.message === "string" ? data.message : "Market data provider request failed.";
-            throw new Error(symbol + ": " + message);
+      const fetchAlphaVantage = async (symbol: string) => {
+        if (!alphaKey) throw new Error("Alpha Vantage key is not configured");
+        const upstream = new URL("https://www.alphavantage.co/query");
+        upstream.searchParams.set("function", "GLOBAL_QUOTE");
+        upstream.searchParams.set("symbol", symbol);
+        upstream.searchParams.set("apikey", alphaKey);
+        const response = await fetch(upstream, {
+          headers: { Accept: "application/json" },
+          signal: AbortSignal.timeout(12000)
+        });
+        const payload = await response.json() as Record<string, any>;
+        const quote = payload["Global Quote"] as Record<string, string> | undefined;
+        if (!response.ok || !quote || !quote["05. price"]) {
+          const reason = payload.Note || payload.Information || payload["Error Message"] || "Alpha Vantage did not return a valid global quote";
+          throw new Error(symbol + ": " + String(reason));
+        }
+        const price = Number(quote["05. price"]);
+        const change = Number(quote["09. change"]);
+        const percentChange = Number(String(quote["10. change percent"] || "").replace("%", ""));
+        if (![price, change, percentChange].every(Number.isFinite)) {
+          throw new Error(symbol + ": Alpha Vantage returned non-numeric quote fields");
+        }
+        return {
+          symbol,
+          close: price,
+          price,
+          change,
+          percent_change: String(percentChange),
+          datetime: quote["07. latest trading day"] || null,
+          source: "Alpha Vantage"
+        };
+      };
+
+      const entries = await Promise.all(symbols.map(async symbol => {
+        try {
+          if (twelveKey) {
+            try {
+              return [symbol, await fetchTwelveData(symbol)] as const;
+            } catch (primaryError) {
+              if (!alphaKey) throw primaryError;
+              const fallback = await fetchAlphaVantage(symbol);
+              return [symbol, { ...fallback, fallbackFrom: "Twelve Data", fallbackReason: primaryError instanceof Error ? primaryError.message : "Twelve Data unavailable" }] as const;
+            }
           }
-          if (typeof data.symbol !== "string" || data.close === undefined) {
-            throw new Error(symbol + ": provider returned an incomplete quote.");
-          }
-          return [symbol, data] as const;
-        }));
+          return [symbol, await fetchAlphaVantage(symbol)] as const;
+        } catch (error) {
+          return [symbol, {
+            symbol,
+            status: "UNAVAILABLE",
+            source: twelveKey ? "Twelve Data/Alpha Vantage" : "Alpha Vantage",
+            error: error instanceof Error ? error.message : "Market data provider is temporarily unavailable."
+          }] as const;
+        }
+      }));
 
-        return Response.json(
-          { data: Object.fromEntries(entries), fetchedAt: new Date().toISOString(), source: "Twelve Data" },
-          { headers: { "Cache-Control": "public, max-age=20, s-maxage=20" } }
-        );
-      } catch (error) {
-        return Response.json(
-          { error: error instanceof Error ? error.message : "Market data provider is temporarily unavailable." },
-          { status: 502 }
-        );
-      }
+      const data = Object.fromEntries(entries);
+      const available = entries.filter(([, row]) => !("status" in row) || row.status !== "UNAVAILABLE").length;
+      const sources = [...new Set(entries.map(([, row]) => row.source).filter(Boolean))];
+      const response = Response.json({
+        data,
+        fetchedAt: new Date().toISOString(),
+        source: sources.length === 1 ? sources[0] : sources.join(" + ") || "Twelve Data/Alpha Vantage",
+        providerConfigured: { twelveData: Boolean(twelveKey), alphaVantage: Boolean(alphaKey) },
+        available,
+        total: symbols.length,
+        note: "Twelve Data הוא המקור הראשי; Alpha Vantage משמש כגיבוי רק כאשר המקור הראשי נכשל. זמני המסחר, עיכובים ומכסות תלויים בתוכנית הספק."
+      }, { headers: { "Cache-Control": "public, max-age=60, s-maxage=60" } });
+      await edgeCache.put(cacheKey, response.clone());
+      return response;
     }
 
     const assetResponse = await env.ASSETS.fetch(request);
