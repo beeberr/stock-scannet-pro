@@ -111,6 +111,7 @@ export function normalizeFuturesQuote(
     delayHours: 8,
     quoteType: 'historical-session-close',
     source: 'Massive Futures',
+    history: valid.map(bar => ({ time: bar.session_end_date as string, open: bar.open ?? bar.close as number, high: bar.high ?? bar.close as number, low: bar.low ?? bar.close as number, close: bar.close as number, volume: bar.volume ?? 0 })),
     rollPolicy: 'החוזה הפעיל הקרוב לפקיעה עם מרווח של 14 ימים לפחות; לא נבחר לפי נפח מסחר'
   };
 }
