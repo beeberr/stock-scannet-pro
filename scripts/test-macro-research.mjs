@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { parseFredCsv, summarizeMacroSeries, buildCommodityMacroContext } from '../src/macroResearch.js';
-const rows=parseFredCsv('observation_date,DGS10\\n2026-01-01,4.1\\n2026-01-02,.\\n2026-01-03,4.2');
+const rows=parseFredCsv('observation_date,DGS10\n2026-01-01,4.1\n2026-01-02,.\n2026-01-03,4.2');
 assert.deepEqual(rows,[{date:'2026-01-01',value:4.1},{date:'2026-01-03',value:4.2}]);
 const summary=summarizeMacroSeries({key:'us_10y',label:'10Y',unit:'%',observations:rows});
 assert.equal(summary.latest,4.2); assert.equal(summary.change,0.1); assert.equal(summary.status,'READY');
