@@ -227,10 +227,10 @@ jobs:
           console.log(`PASS /api/value: FMP/EODHD endpoint responds with explicit status (${value.status}).`);
 
           const indices = await getJson("/api/indices");
-          if (indices.engine !== "indices-sectors" || !["READY", "UNAVAILABLE"].includes(indices.status) || !indices.provider) {
+          if (indices.engine !== "indices-sectors" || !["READY", "PARTIAL", "UNAVAILABLE"].includes(indices.status) || !indices.provider || !indices.data || typeof indices.available !== "number" || indices.total !== 11) {
             throw new Error("/api/indices: provider status response is malformed.");
           }
-          console.log(`PASS /api/indices: FMP indices/sectors endpoint responds with explicit status (${indices.status}).`);
+          console.log(`PASS /api/indices: FMP/Marketstack endpoint responds with explicit status (${indices.status}); ${indices.available}/${indices.total} ETF proxies available.`);
 
           const news = await getJson("/api/news");
           if (news.engine !== "news-events" || !["READY", "UNAVAILABLE"].includes(news.status) || !Array.isArray(news.news) || !Array.isArray(news.earnings)) {
