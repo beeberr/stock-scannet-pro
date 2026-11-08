@@ -199,6 +199,30 @@ jobs:
           }
           console.log(`PASS /api/macro: all four macro series returned independently; ${macro.available}/4 currently available.`);
 
+          const value = await getJson("/api/value");
+          if (value.engine !== "value" || !["READY", "UNAVAILABLE"].includes(value.status) || !value.provider) {
+            throw new Error("/api/value: provider status response is malformed.");
+          }
+          console.log(`PASS /api/value: FMP/EODHD endpoint responds with explicit status (${value.status}).`);
+
+          const indices = await getJson("/api/indices");
+          if (indices.engine !== "indices-sectors" || !["READY", "UNAVAILABLE"].includes(indices.status) || !indices.provider) {
+            throw new Error("/api/indices: provider status response is malformed.");
+          }
+          console.log(`PASS /api/indices: FMP indices/sectors endpoint responds with explicit status (${indices.status}).`);
+
+          const news = await getJson("/api/news");
+          if (news.engine !== "news-events" || !["READY", "UNAVAILABLE"].includes(news.status) || !Array.isArray(news.news) || !Array.isArray(news.earnings)) {
+            throw new Error("/api/news: Finnhub news/events response is malformed.");
+          }
+          console.log(`PASS /api/news: Finnhub endpoint responds with explicit status (${news.status}).`);
+
+          const disclosures = await getJson("/api/disclosures");
+          if (disclosures.engine !== "public-disclosures" || !["READY", "UNAVAILABLE"].includes(disclosures.status) || !disclosures.provider) {
+            throw new Error("/api/disclosures: SEC/Finnhub response is malformed.");
+          }
+          console.log(`PASS /api/disclosures: official/fallback filings endpoint responds with explicit status (${disclosures.status}).`);
+
           const universe = await getJson("/api/universe");
           if (universe.configuredCount !== 45 || universe.maximum !== 50 || universe.dynamicSlots !== 5 || !Array.isArray(universe.assets) || universe.assets.length !== 45) {
             throw new Error("/api/universe: asset registry does not match the 45 configured + 5 reserved hard cap.");
