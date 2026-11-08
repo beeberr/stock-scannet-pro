@@ -26,14 +26,14 @@ const EIA_MONTHS: Record<string, string> = {
 
 function parseEiaWeeklyInventory(html: string) {
   const observations: Array<{ date: string; value: number }> = [];
-  const rows = html.match(/<tr\\b[^>]*>[\\s\\S]*?<\\/tr>/gi) || [];
+  const rows = html.match(/<tr\b[^>]*>[\s\S]*?<\/tr>/gi) || [];
   for (const row of rows) {
-    const cells = [...row.matchAll(/<t[dh]\\b[^>]*>([\\s\\S]*?)<\\/t[dh]>/gi)]
-      .map(match => match[1].replace(/<[^>]*>/g, " ").replace(/&nbsp;|&#160;/gi, " ").replace(/&amp;/gi, "&").replace(/\\s+/g, " ").trim());
-    const period = cells[0]?.match(/^(\\d{4})-([A-Za-z]{3})$/);
+    const cells = [...row.matchAll(/<t[dh]\b[^>]*>([\s\S]*?)<\/t[dh]>/gi)]
+      .map(match => match[1].replace(/<[^>]*>/g, " ").replace(/&nbsp;|&#160;/gi, " ").replace(/&amp;/gi, "&").replace(/\s+/g, " ").trim());
+    const period = cells[0]?.match(/^(\d{4})-([A-Za-z]{3})$/);
     if (!period || !EIA_MONTHS[period[2]]) continue;
     for (let i = 1; i + 1 < cells.length; i += 2) {
-      const day = cells[i].match(/^(\\d{2})\\/(\\d{2})$/);
+      const day = cells[i].match(/^(\d{2})\/(\d{2})$/);
       const raw = cells[i + 1].replace(/,/g, "");
       const value = Number(raw);
       if (day && raw && Number.isFinite(value)) {
