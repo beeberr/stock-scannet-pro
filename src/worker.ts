@@ -820,7 +820,7 @@ export default {
       }));
 
       const data = Object.fromEntries(entries);
-      const available = entries.filter(([, row]) => row.status !== "UNAVAILABLE").length;
+      const available = entries.filter(([, row]) => !("status" in row) || row.status !== "UNAVAILABLE").length;
       const sources = [...new Set(entries.map(([, row]) => row.source).filter(Boolean))];
       const response = Response.json({
         data,
