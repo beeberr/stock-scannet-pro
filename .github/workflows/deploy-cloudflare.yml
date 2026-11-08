@@ -127,11 +127,12 @@ jobs:
           FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
           FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
           EODHD_API_KEY: ${{ secrets.EODHD_API_KEY }}
+          ALPHA_VANTAGE_API_KEY: ${{ secrets.ALPHA_VANTAGE_API_KEY }}
           SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          for name in TWELVE_DATA_API_KEY FINNHUB_API_KEY FMP_API_KEY EODHD_API_KEY SEC_USER_AGENT; do
+          for name in TWELVE_DATA_API_KEY FINNHUB_API_KEY FMP_API_KEY EODHD_API_KEY ALPHA_VANTAGE_API_KEY SEC_USER_AGENT; do
             value="${!name}"
             if [ -n "$value" ]; then
               printf '%s' "$value" | npx wrangler secret put "$name" --config wrangler.jsonc
