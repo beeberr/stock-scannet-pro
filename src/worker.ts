@@ -161,9 +161,6 @@ export default {
           const lookback = candles.slice(-21, -1);
           const resistance = lookback.length ? Math.max(...lookback.map(c => c.high)) : null;
           const support = lookback.length ? Math.min(...lookback.map(c => c.low)) : null;
-          const avgVolume = lookback.length ? lookback.reduce((sum,c) => sum + c.volume, 0) / lookback.length : null;
-          const volumeRatio = avgVolume && latest ? latest.volume / avgVolume : null;
-          const breakout = resistance !== null && latest ? latest.close > resistance : false;
           const momentumMetrics = analyzeMomentum(candles);
           return [symbol, {
             source: "Twelve Data", interval: "1day", delayedOrLive: "לפי זמינות ומגבלות תוכנית הספק",
