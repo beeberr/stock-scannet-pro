@@ -169,6 +169,16 @@ jobs:
           }
           console.log("PASS /api/health: Worker and static assets are available.");
 
+          const macro = await getJson("/api/macro");
+          const macroKeys = ["us_10y", "usd_broad", "crude_inventory", "wti_spot"];
+          if (!macro.series || macroKeys.some(key => !macro.series[key] || macro.series[key].key !== key || !macro.series[key].status)) {
+            throw new Error("/api/macro: one or more independent macro series are missing or malformed.");
+          }
+          if (macro.total !== 4 || typeof macro.available !== "number") {
+            throw new Error("/api/macro: availability summary is malformed.");
+          }
+          console.log(`PASS /api/macro: all four macro series returned independently; ${macro.available}/4 currently available.`);
+
           const universe = await getJson("/api/universe");
           if (universe.configuredCount !== 45 || universe.maximum !== 50 || universe.dynamicSlots !== 5 || !Array.isArray(universe.assets) || universe.assets.length !== 45) {
             throw new Error("/api/universe: asset registry does not match the 45 configured + 5 reserved hard cap.");
