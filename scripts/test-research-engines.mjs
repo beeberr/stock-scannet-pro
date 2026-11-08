@@ -7,6 +7,7 @@ if(compile.status!==0){process.stderr.write(compile.stdout+compile.stderr);proce
 try{
  const {analyzeMomentum}=await import(new URL('../'+out+'/researchEngines.js',import.meta.url));
  const candles=Array.from({length:25},(_,i)=>({time:new Date(Date.UTC(2026,0,i+1)).toISOString(),open:100+i,high:102+i,low:99+i,close:101+i,volume:1000}));
+ candles[candles.length-1]={...candles[candles.length-1],open:129,high:131,low:128,close:130};
  const result=analyzeMomentum(candles);
  assert.equal(result.status,'READY'); assert.equal(result.breakout20,true);
  assert.equal(result.averageVolume20,1000); assert.equal(result.relativeVolume,1);
