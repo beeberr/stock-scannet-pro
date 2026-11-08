@@ -18,7 +18,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
       - name: Install dependencies
         run: npm install --no-audit --no-fund
       - name: Type-check and build
@@ -29,3 +29,5 @@ jobs:
         run: npm run test:market
       - name: Test signal engine
         run: npm run test:signal
+      - name: Test Massive Futures provider
+        run: npm run test:massive

@@ -16,7 +16,7 @@ Hebrew RTL investment research and paper-trading workspace.
 - Explicit warning labels: no live quotes, no fabricated scores, and no implied recommendations.
 
 ## Not connected yet
-No market-data provider, bank research feed, broker, SEC/public-official disclosure feed, authentication, cloud database, or automated forecast engine is connected. Watchlist symbols are identifiers only, not current prices or signals. Demo records are stored in the current browser only.
+Massive Futures integration is implemented but requires the MASSIVE_API_KEY GitHub Actions secret before the Worker can retrieve data. The free Futures Basic tier returns historical session bars with an 8-hour delay and a 5-requests-per-minute limit. The app never labels these as live prices. Stock quotes still require TWELVE_DATA_API_KEY. No broker, SEC/public-official disclosure feed, authentication, cloud database, or automated forecast engine is connected. Demo records are stored in the current browser only.
 
 ## Eight planned engines
 1. Technical trend and indicators.
@@ -33,7 +33,7 @@ A monthly doubling target is tracked only as an aspiration, never represented as
 
 ## Next milestones
 - Add automated typecheck/build verification and signal-engine regression tests.
-- Integrate licensed market data and fundamental data.
+- Add MASSIVE_API_KEY to GitHub repository secrets and verify live API responses from the Worker; validate contract roll selection against actual volume before relying on signals.\n- Integrate licensed stock and fundamental data.
 - Add bank research sources where access and redistribution are permitted.
 - Add official SEC and public-disclosure ingestion.
 - Connect the technical-analysis module to a licensed market-data provider with timestamps, stale-data handling, timeout/retry and caching.
