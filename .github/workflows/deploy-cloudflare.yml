@@ -280,14 +280,27 @@ jobs:
           if (commodities.providerConfigured !== true) {
             throw new Error("/api/commodities: Massive Futures provider is not configured.");
           }
-          for (const key of ["GC", "CL"]) {
-            const quote = commodities.data?.[key];
-            if (!quote || quote.available !== true || !(quote.close || quote.price)) {
-              throw new Error(`/api/commodities: ${key} (gold/oil) is unavailable: ${quote?.error ?? "no valid price returned"}`);
-            }
+          if (!["READY", "DEGRADED", "UNAVAILABLE"].includes(commodities.status) ||
+              !commodities.data || !["GC", "SI", "HG", "CL"].every(key => commodities.data[key])) {
+            throw new Error("/api/commodities: provider response is missing explicit status or expected commodity records.");
           }
-          console.log("PASS /api/commodities: valid gold (GC) and WTI oil (CL) prices returned from Massive Futures.");
-          console.log("API integration smoke tests passed. No API keys or quote payloads were printed.");
+          const gold = commodities.data.GC;
+          const oil = commodities.data.CL;
+          const validPrice = quote => quote?.available === true && Number.isFinite(Number(quote.close ?? quote.price)) && Number(quote.close ?? quote.price) > 0;
+          if (commodities.status === "READY" && (!validPrice(gold) || !validPrice(oil))) {
+            throw new Error("/api/commodities: READY status requires valid gold and WTI prices.");
+          }
+          if (commodities.status === "DEGRADED") {
+            if (!commodities.stale || ![gold, oil].some(validPrice)) {
+              throw new Error("/api/commodities: DEGRADED status must explicitly identify stale cached data.");
+            }
+            console.warn("WARN /api/commodities: Massive is rate-limited or unavailable; explicitly marked cached data is being served.");
+          } else if (commodities.status === "UNAVAILABLE") {
+            console.warn("WARN /api/commodities: Massive is configured but currently has no valid cached/current commodity prices. Deployment can proceed; the commodity engine remains unavailable.");
+          } else {
+            console.log("PASS /api/commodities: fresh gold and WTI prices returned from Massive Futures.");
+          }
+          console.log("API integration smoke tests passed. Provider outages are reported as degraded data, not deployment failures.");
           NODE
 
       - name: Install Chromium for browser verification
