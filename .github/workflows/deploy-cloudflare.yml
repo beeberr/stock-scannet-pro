@@ -248,10 +248,10 @@ jobs:
               throw new Error(`/api/quotes: missing or invalid quote for ${symbol}.`);
             }
           }
-          if (quotes.source !== "Twelve Data") {
+          if (!["Twelve Data", "Alpha Vantage", "Twelve Data + Alpha Vantage"].includes(quotes.source)) {
             throw new Error("/api/quotes: unexpected data source.");
           }
-          console.log("PASS /api/quotes: valid Twelve Data quotes returned for AAPL, MSFT, NVDA and XLE.");
+          console.log("PASS /api/quotes: valid quotes returned for AAPL, MSFT, NVDA and XLE from Twelve Data or its Alpha Vantage fallback.");
 
           const commodities = await getJson("/api/commodities");
           if (commodities.providerConfigured !== true) {
