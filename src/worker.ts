@@ -244,9 +244,9 @@ export default {
       if (cached) return cached;
 
       const definitions = [
-        ["us_10y", "תשואת אג\\"ח ארה\\"ב ל-10 שנים", "%", "DGS10"],
+        ["us_10y", `תשואת אג"ח ארה"ב ל-10 שנים`, "%", "DGS10"],
         ["usd_broad", "מדד דולר רחב משוקלל סחר", "מדד", "DTWEXBGS"],
-        ["crude_inventory", "מלאי נפט גולמי בארה\\"ב כולל SPR", "אלפי חביות", "WCESTUS1"],
+        ["crude_inventory", `מלאי נפט גולמי בארה"ב כולל SPR`, "אלפי חביות", "WCESTUS1"],
         ["wti_spot", "מחיר ספוט נפט WTI", "דולר לחבית", "DCOILWTICO"],
       ] as const;
 
@@ -619,7 +619,7 @@ export default {
         engine: "indices-sectors", status: entries.some(([, row]) => row.status === "READY") ? "READY" : "UNAVAILABLE",
         provider: "FMP", providerConfigured: true, fetchedAt: new Date().toISOString(), data,
         note: "ETF-ים משמשים כפרוקסי למדדים ולסקטורים; אין להסיק מהם רוחב שוק מלא או ביצועי מדד ללא התאמת הגדרה."
-      }, { headers: { "Cache-Control": "public, max-age": 900, "s-maxage": 900 } });
+      }, { headers: { "Cache-Control": "public, max-age=900, s-maxage=900" } });
       if (response.ok) await edgeCache.put(cacheKey, response.clone());
       return response;
     }
