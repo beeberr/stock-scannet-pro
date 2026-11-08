@@ -217,12 +217,24 @@ jobs:
             throw new Error("/api/news: Finnhub news/events response is malformed.");
           }
           console.log(`PASS /api/news: Finnhub endpoint responds with explicit status (${news.status}).`);
+          if (news.errors) {
+            for (const [feed, error] of Object.entries(news.errors)) {
+              if (error) console.log(`DIAGNOSTIC /api/news ${feed}: ${String(error).slice(0, 300)}`);
+            }
+          }
+          console.log(`DIAGNOSTIC /api/news counts: news=${news.news.length}, earnings=${news.earnings.length}.`);
 
           const disclosures = await getJson("/api/disclosures");
           if (disclosures.engine !== "public-disclosures" || !["READY", "UNAVAILABLE"].includes(disclosures.status) || !disclosures.provider) {
             throw new Error("/api/disclosures: SEC/Finnhub response is malformed.");
           }
           console.log(`PASS /api/disclosures: official/fallback filings endpoint responds with explicit status (${disclosures.status}).`);
+          if (disclosures.error) console.log(`DIAGNOSTIC /api/disclosures: ${String(disclosures.error).slice(0, 300)}`);
+          if (disclosures.data && typeof disclosures.data === "object") {
+            for (const [symbol, row] of Object.entries(disclosures.data)) {
+              console.log(`DIAGNOSTIC /api/disclosures ${symbol}: status=${row.status ?? "unknown"}${row.error ? `; ${String(row.error).slice(0, 200)}` : ""}; filings=${Array.isArray(row.filings) ? row.filings.length : 0}.`);
+            }
+          }
 
           const universe = await getJson("/api/universe");
           if (universe.configuredCount !== 45 || universe.maximum !== 50 || universe.dynamicSlots !== 5 || !Array.isArray(universe.assets) || universe.assets.length !== 45) {
