@@ -15,6 +15,7 @@ interface Env {
   MASSIVE_API_KEY?: string;
   FINNHUB_API_KEY?: string;
   FMP_API_KEY?: string;
+  EODHD_API_KEY?: string;
   SEC_USER_AGENT?: string;
   ASSETS: { fetch(request: Request): Promise<Response> };
 }
@@ -342,7 +343,8 @@ export default {
     if (url.pathname === "/api/value") {
       if (request.method !== "GET") return Response.json({ error: "Method not allowed." }, { status: 405 });
       const key = env.FMP_API_KEY?.trim();
-      if (!key) return Response.json({ engine: "value", status: "UNAVAILABLE", provider: "FMP", providerConfigured: false, data: {}, error: "מפתח FMP אינו מוגדר ב-Worker." }, { headers: { "Cache-Control": "no-store" } });
+      const eodhdKey = env.EODHD_API_KEY?.trim();
+      if (!key && !eodhdKey) return Response.json({ engine: "value", status: "UNAVAILABLE", provider: "FMP/EODHD", providerConfigured: false, data: {}, error: "לא הוגדר מפתח FMP או EODHD ב-Worker." }, { headers: { "Cache-Control": "no-store" } });
       const symbols = (url.searchParams.get("symbols") || "AAPL,MSFT,NVDA,JPM").split(",").map(s => s.trim().toUpperCase()).filter(Boolean);
       const equitySymbols = new Set(ASSET_UNIVERSE.filter(asset => asset[2] === "מניה").map(asset => asset[0]));
       if (!symbols.length || symbols.length > 8 || symbols.some(symbol => !equitySymbols.has(symbol))) {
@@ -352,8 +354,42 @@ export default {
       const edgeCache = (globalThis as unknown as { caches: { default: Cache } }).caches.default;
       const cached = await edgeCache.match(cacheKey);
       if (cached) return cached;
+      const fetchEodhd = async (symbol: string) => {
+        const ticker = symbol.replace(".", "-") + ".US";
+        const endpoint = new URL("https://eodhd.com/api/v1.1/fundamentals/" + encodeURIComponent(ticker));
+        endpoint.searchParams.set("api_token", eodhdKey || "");
+        endpoint.searchParams.set("filter", "Highlights,Valuation,Financials::Income_Statement");
+        const response = await fetch(endpoint, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(15000) });
+        if (!response.ok) throw new Error("EODHD HTTP " + response.status);
+        const payload = await response.json() as Record<string, any>;
+        if (!payload || typeof payload !== "object" || payload.Message || payload["Error Message"]) throw new Error("EODHD לא החזיר נתוני יסוד תקינים");
+        const highlights = payload.Highlights || {};
+        const valuation = payload.Valuation || {};
+        const yearly = payload.Financials?.Income_Statement?.yearly || {};
+        const reports = Object.values(yearly) as Array<Record<string, unknown>>;
+        reports.sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+        const latest = reports[0];
+        return {
+          symbol, status: latest || Object.keys(highlights).length || Object.keys(valuation).length ? "READY" : "UNAVAILABLE",
+          source: "EODHD", asOf: String(latest?.date || ""),
+          valuation: {
+            pe: highlights.PERatio ?? valuation.TrailingPE ?? valuation.TrailingPEttm ?? null,
+            priceToBook: valuation.PriceBookMRQ ?? null,
+            debtEquity: null, currentRatio: null,
+            returnOnEquity: highlights.ReturnOnEquityTTM ?? null,
+            netProfitMargin: highlights.ProfitMargin ?? null
+          },
+          latestFinancials: latest ? {
+            date: latest.date ?? null, revenue: latest.totalRevenue ?? null,
+            netIncome: latest.netIncome ?? null, operatingIncome: latest.operatingIncome ?? null,
+            eps: latest.dilutedEPS ?? latest.basicEPS ?? null
+          } : null,
+          partial: true
+        };
+      };
       const entries = await Promise.all(symbols.map(async symbol => {
         try {
+          if (!key && eodhdKey) return [symbol, await fetchEodhd(symbol)] as const;
           const fetchFmp = async (path: string) => {
             const endpoint = new URL("https://financialmodelingprep.com/stable/" + path);
             endpoint.searchParams.set("symbol", symbol);
@@ -370,6 +406,7 @@ export default {
           ]);
           const ratios = ratiosResult.status === "fulfilled" ? ratiosResult.value : null;
           const statement = statementsResult.status === "fulfilled" ? statementsResult.value : null;
+          if (!ratios && !statement && eodhdKey) return [symbol, await fetchEodhd(symbol)] as const;
           const status = ratios || statement ? "READY" : "UNAVAILABLE";
           return [symbol, {
             symbol, status, source: "FMP",
@@ -394,13 +431,19 @@ export default {
             ].filter(Boolean).join("; ") : null
           }] as const;
         } catch (error) {
+          if (eodhdKey) {
+            try { return [symbol, await fetchEodhd(symbol)] as const; }
+            catch (fallbackError) {
+              return [symbol, { symbol, status: "UNAVAILABLE", source: "FMP/EODHD", error: (error instanceof Error ? error.message : "FMP error") + "; " + (fallbackError instanceof Error ? fallbackError.message : "EODHD error") }] as const;
+            }
+          }
           return [symbol, { symbol, status: "UNAVAILABLE", source: "FMP", error: error instanceof Error ? error.message : "שגיאת ספק" }] as const;
         }
       }));
       const data = Object.fromEntries(entries);
       const response = Response.json({
         engine: "value", status: entries.some(([, row]) => row.status === "READY") ? "READY" : "UNAVAILABLE",
-        provider: "FMP", providerConfigured: true, fetchedAt: new Date().toISOString(), data,
+        provider: key ? (eodhdKey ? "FMP with EODHD fallback" : "FMP") : "EODHD", providerConfigured: true, fetchedAt: new Date().toISOString(), data,
         note: "מדדי הערכת שווי ודוחות פיננסיים בלבד; זמינות השדות תלויה בהרשאות תוכנית FMP. אין לראות בכך המלצת השקעה."
       }, { headers: { "Cache-Control": "public, max-age=21600, s-maxage=21600" } });
       await edgeCache.put(cacheKey, response.clone());
@@ -605,6 +648,7 @@ export default {
             twelveData: env.TWELVE_DATA_API_KEY ? "configured" : "missing-key",
             finnhub: env.FINNHUB_API_KEY ? "configured" : "missing-key",
             fmp: env.FMP_API_KEY ? "configured" : "missing-key",
+            eodhd: env.EODHD_API_KEY ? "configured" : "missing-key",
             secEdgar: env.SEC_USER_AGENT ? "configured" : "missing-user-agent"
           }
         },
