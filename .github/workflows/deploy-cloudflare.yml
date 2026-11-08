@@ -80,6 +80,12 @@ jobs:
           const tokenStatus = payload?.result?.status ?? "unknown";
           if (!response.ok || payload?.success !== true || tokenStatus !== "active") {
             console.error(`Cloudflare rejected the token. HTTP ${response.status}; API success: ${String(payload?.success)}; token status: ${tokenStatus}.`);
+            for (const item of payload?.errors ?? []) {
+              console.error(`Cloudflare error ${item.code ?? "unknown"}: ${item.message ?? "No message"}`);
+              for (const nested of item.error_chain ?? []) {
+                console.error(`Cloudflare detail ${nested.code ?? "unknown"}: ${nested.message ?? "No message"}`);
+              }
+            }
             console.error("The token value was not printed. Check that the GitHub secret contains the current Cloudflare API token.");
             process.exit(1);
           }
