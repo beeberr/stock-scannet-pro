@@ -287,18 +287,22 @@ jobs:
           const gold = commodities.data.GC;
           const oil = commodities.data.CL;
           const validPrice = quote => quote?.available === true && Number.isFinite(Number(quote.close ?? quote.price)) && Number(quote.close ?? quote.price) > 0;
-          if (commodities.status === "READY" && (!validPrice(gold) || !validPrice(oil))) {
-            throw new Error("/api/commodities: READY status requires valid gold and WTI prices.");
+          const availableCommodities = [gold, commodities.data.SI, commodities.data.HG, oil].filter(validPrice).length;
+          if (commodities.status === "READY" && (!validPrice(gold) || !validPrice(oil) || availableCommodities !== 4)) {
+            throw new Error("/api/commodities: READY status requires all four commodity prices, including gold and WTI.");
           }
           if (commodities.status === "DEGRADED") {
-            if (!commodities.stale || ![gold, oil].some(validPrice)) {
+            if (!commodities.stale || availableCommodities === 0) {
               throw new Error("/api/commodities: DEGRADED status must explicitly identify stale cached data.");
             }
             console.warn("WARN /api/commodities: Massive is rate-limited or unavailable; explicitly marked cached data is being served.");
+          } else if (commodities.status === "PARTIAL") {
+            if (availableCommodities === 0) throw new Error("/api/commodities: PARTIAL status has no valid commodity prices.");
+            console.warn(`WARN /api/commodities: Massive returned partial coverage (${availableCommodities}/4); unavailable commodities remain explicitly marked.`);
           } else if (commodities.status === "UNAVAILABLE") {
             console.warn("WARN /api/commodities: Massive is configured but currently has no valid cached/current commodity prices. Deployment can proceed; the commodity engine remains unavailable.");
           } else {
-            console.log("PASS /api/commodities: fresh gold and WTI prices returned from Massive Futures.");
+            console.log("PASS /api/commodities: all four commodity prices returned from Massive Futures.");
           }
           console.log("API integration smoke tests passed. Provider outages are reported as degraded data, not deployment failures.");
           NODE
