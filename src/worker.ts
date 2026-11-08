@@ -354,7 +354,7 @@ export default {
       return Response.json(
         {
           status: "ok",
-          version: "2026-11-08-massive-futures",
+          version: "2026-11-08-macro-fred-eia-fallback",
           assets: "bound",
           providers: {
             massiveFutures: env.MASSIVE_API_KEY ? "configured" : "missing-key",
@@ -482,7 +482,7 @@ export default {
       const headers = new Headers(assetResponse.headers);
       headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
       headers.set("Pragma", "no-cache");
-      headers.set("X-Stock-Scanner-Version", "2026-11-08-massive-futures");
+      headers.set("X-Stock-Scanner-Version", "2026-11-08-macro-fred-eia-fallback");
       return new Response(assetResponse.body, {
         status: assetResponse.status,
         statusText: assetResponse.statusText,
