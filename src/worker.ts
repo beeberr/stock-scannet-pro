@@ -1,3 +1,4 @@
+import { ASSET_UNIVERSE, MAX_TRACKED_ASSETS, DYNAMIC_WATCH_SLOTS, CURRENTLY_CONNECTED_SYMBOLS } from './assetUniverse.js';
 import {
   FUTURES_PRODUCTS,
   normalizeFuturesQuote,
