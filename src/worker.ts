@@ -636,32 +636,63 @@ export default {
     if (url.pathname === "/api/indices") {
       if (request.method !== "GET") return Response.json({ error: "Method not allowed." }, { status: 405 });
       const key = env.FMP_API_KEY?.trim();
-      if (!key) return Response.json({ engine: "indices-sectors", status: "UNAVAILABLE", provider: "FMP", providerConfigured: false, data: {}, error: "מפתח FMP אינו מוגדר ב-Worker." }, { headers: { "Cache-Control": "no-store" } });
+      const marketstackKey = env.MARKETSTACK_API_KEY?.trim();
+      if (!key && !marketstackKey) return Response.json({ engine: "indices-sectors", status: "UNAVAILABLE", provider: "FMP/Marketstack", providerConfigured: false, data: {}, error: "לא הוגדר מפתח FMP או Marketstack ב-Worker." }, { headers: { "Cache-Control": "no-store" } });
       const symbols = ["SPY", "QQQ", "DIA", "IWM", "XLF", "XLK", "XLE", "XLV", "XLI", "XLY", "XLP"];
-      const cacheKey = new Request(new URL("/api/indices?provider=fmp-quotes-v1", url.origin), { method: "GET" });
+      const cacheKey = new Request(new URL("/api/indices?provider=fmp-marketstack-eod-v2", url.origin), { method: "GET" });
       const edgeCache = (globalThis as unknown as { caches: { default: Cache } }).caches.default;
       const cached = await edgeCache.match(cacheKey);
       if (cached) return cached;
-      const entries = await Promise.all(symbols.map(async symbol => {
-        try {
-          const endpoint = new URL("https://financialmodelingprep.com/stable/quote");
-          endpoint.searchParams.set("symbol", symbol);
-          endpoint.searchParams.set("apikey", key);
-          const response = await fetch(endpoint, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(12000) });
-          if (!response.ok) throw new Error("FMP HTTP " + response.status);
-          const payload = await response.json() as Array<Record<string, unknown>>;
-          const quote = Array.isArray(payload) ? payload[0] : null;
-          if (!quote || quote.price === undefined) throw new Error("FMP לא החזיר ציטוט תקין");
-          return [symbol, { symbol, price: quote.price, change: quote.change, changesPercentage: quote.changePercentage, volume: quote.volume, name: quote.name, asOf: quote.timestamp ?? null, source: "FMP", status: "READY" }] as const;
-        } catch (error) {
-          return [symbol, { symbol, status: "UNAVAILABLE", source: "FMP", error: error instanceof Error ? error.message : "שגיאת ספק" }] as const;
+      const fetchMarketstack = async (symbol: string) => {
+        if (!marketstackKey) throw new Error("Marketstack אינו מוגדר");
+        const endpoint = new URL("https://api.marketstack.com/v2/eod/latest");
+        endpoint.searchParams.set("symbols", symbol);
+        endpoint.searchParams.set("access_key", marketstackKey);
+        const response = await fetch(endpoint, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(12000) });
+        const payload = await response.json() as { data?: Array<Record<string, unknown>>; error?: { message?: string } };
+        const row = Array.isArray(payload.data) ? payload.data.find(item => String(item.symbol || "").toUpperCase() === symbol) || payload.data[0] : null;
+        const close = Number(row?.close);
+        if (!response.ok || !row || !Number.isFinite(close) || close <= 0) {
+          throw new Error("Marketstack HTTP " + response.status + (payload.error?.message ? ": " + payload.error.message : " או נתון סגירה חסר"));
         }
+        return { symbol, price: close, name: symbol, asOf: row.date ?? null, source: "Marketstack EOD", delayed: true, status: "READY" };
+      };
+      const entries = await Promise.all(symbols.map(async symbol => {
+        let fmpFailure = "";
+        if (key) {
+          try {
+            const endpoint = new URL("https://financialmodelingprep.com/stable/quote");
+            endpoint.searchParams.set("symbol", symbol);
+            endpoint.searchParams.set("apikey", key);
+            const response = await fetch(endpoint, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(12000) });
+            if (!response.ok) throw new Error("FMP HTTP " + response.status);
+            const payload = await response.json() as Array<Record<string, unknown>>;
+            const quote = Array.isArray(payload) ? payload[0] : null;
+            if (!quote || quote.price === undefined) throw new Error("FMP לא החזיר ציטוט תקין");
+            return [symbol, { symbol, price: quote.price, change: quote.change, changesPercentage: quote.changePercentage, volume: quote.volume, name: quote.name, asOf: quote.timestamp ?? null, source: "FMP", status: "READY" }] as const;
+          } catch (error) {
+            fmpFailure = error instanceof Error ? error.message : "FMP request failed";
+          }
+        }
+        if (marketstackKey) {
+          try {
+            const fallback = await fetchMarketstack(symbol);
+            return [symbol, { ...fallback, fallbackFrom: key ? "FMP" : null, fallbackReason: fmpFailure || null }] as const;
+          } catch (error) {
+            const fallbackFailure = error instanceof Error ? error.message : "Marketstack request failed";
+            return [symbol, { symbol, status: "UNAVAILABLE", source: key ? "FMP/Marketstack" : "Marketstack", error: [fmpFailure, fallbackFailure].filter(Boolean).join("; ") }] as const;
+          }
+        }
+        return [symbol, { symbol, status: "UNAVAILABLE", source: "FMP", error: fmpFailure || "FMP לא החזיר נתון" }] as const;
       }));
       const data = Object.fromEntries(entries);
+      const ready = entries.filter(([, row]) => row.status === "READY").length;
+      const sources = [...new Set(entries.map(([, row]) => row.source).filter(Boolean))];
       const response = Response.json({
-        engine: "indices-sectors", status: entries.some(([, row]) => row.status === "READY") ? "READY" : "UNAVAILABLE",
-        provider: "FMP", providerConfigured: true, fetchedAt: new Date().toISOString(), data,
-        note: "ETF-ים משמשים כפרוקסי למדדים ולסקטורים; אין להסיק מהם רוחב שוק מלא או ביצועי מדד ללא התאמת הגדרה."
+        engine: "indices-sectors", status: ready ? "READY" : "UNAVAILABLE",
+        provider: sources.join(" + ") || "FMP/Marketstack", providerConfigured: true,
+        available: ready, total: symbols.length, fetchedAt: new Date().toISOString(), data,
+        note: "ETF-ים משמשים כפרוקסי למדדים ולסקטורים. Marketstack מספק כאן נתוני סגירה יומיים בלבד, לא נתוני זמן אמת ולא מדידת רוחב שוק מלאה."
       }, { headers: { "Cache-Control": "public, max-age=900, s-maxage=900" } });
       if (response.ok) await edgeCache.put(cacheKey, response.clone());
       return response;
