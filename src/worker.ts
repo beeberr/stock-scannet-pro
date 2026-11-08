@@ -266,8 +266,8 @@ export default {
           }
           const observations = lines.slice(1).flatMap(line => {
             const parts = line.split(",");
-            const date = parts[0]?.replaceAll('"', "");
-            const raw = parts[1]?.replaceAll('"', "");
+            const date = parts[0]?.replace(/\"/g, "");
+            const raw = parts[1]?.replace(/\"/g, "");
             const value = Number(raw);
             return date && raw && raw !== "." && Number.isFinite(value) ? [{ date, value }] : [];
           }).sort((a, b) => a.date.localeCompare(b.date));
@@ -348,7 +348,7 @@ export default {
       const eodhdKey = env.EODHD_API_KEY?.trim();
       if (!key && !eodhdKey) return Response.json({ engine: "value", status: "UNAVAILABLE", provider: "FMP/EODHD", providerConfigured: false, data: {}, error: "לא הוגדר מפתח FMP או EODHD ב-Worker." }, { headers: { "Cache-Control": "no-store" } });
       const symbols = (url.searchParams.get("symbols") || "AAPL,MSFT,NVDA,JPM").split(",").map(s => s.trim().toUpperCase()).filter(Boolean);
-      const equitySymbols = new Set(ASSET_UNIVERSE.filter(asset => asset[2] === "מניה").map(asset => asset[0]));
+      const equitySymbols = new Set<string>(ASSET_UNIVERSE.filter(asset => asset[2] === "מניה").map(asset => asset[0]));
       if (!symbols.length || symbols.length > 8 || symbols.some(symbol => !equitySymbols.has(symbol))) {
         return Response.json({ error: "ניתן לבקש עד שמונה מניות מתוך מאגר המניות." }, { status: 400 });
       }
@@ -395,7 +395,7 @@ export default {
           const fetchFmp = async (path: string) => {
             const endpoint = new URL("https://financialmodelingprep.com/stable/" + path);
             endpoint.searchParams.set("symbol", symbol);
-            endpoint.searchParams.set("apikey", key);
+            endpoint.searchParams.set("apikey", key || "");
             const response = await fetch(endpoint, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(12000) });
             if (!response.ok) throw new Error("FMP HTTP " + response.status);
             const payload = await response.json() as unknown;
