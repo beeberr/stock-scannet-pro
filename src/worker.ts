@@ -494,7 +494,7 @@ export default {
     if (url.pathname === "/api/disclosures") {
       if (request.method !== "GET") return Response.json({ error: "Method not allowed." }, { status: 405 });
       const symbols = (url.searchParams.get("symbols") || "AAPL,MSFT,NVDA").split(",").map(s => s.trim().toUpperCase()).filter(Boolean);
-      const equitySymbols = new Set(ASSET_UNIVERSE.filter(asset => asset[2] === "מניה").map(asset => asset[0]));
+      const equitySymbols = new Set<string>(ASSET_UNIVERSE.filter(asset => asset[2] === "מניה").map(asset => asset[0]));
       if (!symbols.length || symbols.length > 5 || symbols.some(symbol => !equitySymbols.has(symbol))) {
         return Response.json({ error: "ניתן לבקש עד חמש מניות מתוך מאגר המניות." }, { status: 400 });
       }
