@@ -1,0 +1,64 @@
+name: Monitor Stock Scanner availability
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stock-scannet-pro-availability-monitor
+  cancel-in-progress: false
+
+jobs:
+  uptime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Check live website, assets and Worker health
+        env:
+          BASE_URL: https://stock-scannet-pro.china2sell.workers.dev
+        run: |
+          node --input-type=module <<'NODE'
+          const base = process.env.BASE_URL;
+          const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+          let lastError = 'No response';
+
+          for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+              const home = await fetch(base + '/', { signal: AbortSignal.timeout(12000), redirect: 'follow' });
+              if (!home.ok) throw new Error('Homepage HTTP ' + home.status);
+              const html = await home.text();
+              const js = html.match(/<script[^>]+src="([^"]+\.js[^"]*)"/i)?.[1];
+              const css = html.match(/<link[^>]+href="([^"]+\.css[^"]*)"/i)?.[1];
+              if (!js || !css) throw new Error('Homepage did not reference both JavaScript and CSS bundles');
+
+              for (const asset of [js, css]) {
+                const response = await fetch(new URL(asset, base), { signal: AbortSignal.timeout(12000) });
+                if (!response.ok) throw new Error('Static asset HTTP ' + response.status + ': ' + asset);
+              }
+
+              const healthResponse = await fetch(new URL('/api/health', base), {
+                headers: { Accept: 'application/json' },
+                signal: AbortSignal.timeout(12000)
+              });
+              if (!healthResponse.ok) throw new Error('/api/health HTTP ' + healthResponse.status);
+              const health = await healthResponse.json();
+              if (health.status !== 'ok' || health.assets !== 'bound') {
+                throw new Error('Worker health check returned an unhealthy status');
+              }
+
+              console.log('UP: homepage, JavaScript bundle, CSS bundle and Worker health all passed.');
+              process.exit(0);
+            } catch (error) {
+              lastError = error?.message ?? 'Unknown monitoring error';
+              console.error('Availability attempt ' + attempt + ' failed: ' + lastError);
+              if (attempt < 3) await pause(10000);
+            }
+          }
+
+          console.error('DOWN: Stock Scanner availability check failed after 3 attempts. ' + lastError);
+          process.exit(1);
+          NODE
