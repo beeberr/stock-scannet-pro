@@ -36,6 +36,7 @@ jobs:
           npm run test:massive
           npm run test:universe
           npm run test:engines
+          npm run test:macro
 
       - name: Build application
         run: npm run build
