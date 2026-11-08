@@ -21,12 +21,17 @@ The research watchlist is capped at 50 assets: 20 equities, 8 commodities, 8 ind
 Only AAPL, MSFT, NVDA and XLE currently have a stock-quote adapter (Twelve Data); GC, SI, HG and CL currently have the Massive Futures adapter. Other watchlist assets remain visible but explicitly unconnected until a compatible free-tier provider and API credential are configured. The app must never manufacture a quote or describe a delayed/historical value as real-time.
 
 ## Research engine activation status
-- Engines 1–2 (technical analysis and short-term momentum) now have a server endpoint using 80 daily OHLCV bars from Twelve Data for AAPL, MSFT, NVDA and XLE, with a 15-minute edge cache.
-- Technical outputs include SMA20/SMA50, RSI14, ATR14, MACD and 20-session support/resistance. Momentum outputs include 20-session breakout, relative volume and ATR percentage; the existing long-setup score and risk levels are exposed as research-only values.
-- The remaining six engines are still pending. Gold/oil OHLCV history is not yet connected to the research engines. Engine outputs are not real-time guarantees, trading instructions, or validated forecasts.
+- Engines 1–2 (technical analysis and short-term momentum) use 80 daily OHLCV bars from Twelve Data for AAPL, MSFT, NVDA and XLE, with a 15-minute edge cache.
+- Engine 3 (value) uses FMP/EODHD with Eulerpool as a fundamentals fallback where supported; missing fields remain explicitly unavailable.
+- Engine 4 (macro) uses FRED/EIA historical series. Bank forecasts and a complete supply/demand model are not connected.
+- Engine 5 (gold, silver, copper and oil) uses Massive Futures historical session bars. Basic-tier data is delayed by about eight hours, requests are quota-limited, successful responses are cached for 15 minutes, and the last successful snapshot may be served for up to 48 hours with an explicit stale-data warning during provider outages.
+- Engine 6 (indices and sectors) uses FMP with Marketstack daily EOD as a fallback. ETFs are proxies, not a complete market-breadth calculation; partial coverage is reported as PARTIAL rather than READY.
+- Engine 7 uses Finnhub for news and events. Engine 8 uses SEC EDGAR/company filings; it does not currently cover public officials' STOCK Act disclosures.
+- Engine outputs are research data, not real-time guarantees, trading instructions, or validated forecasts.
 
-## Not connected yet
-Massive Futures integration is implemented but requires the MASSIVE_API_KEY GitHub Actions secret before the Worker can retrieve data. The free Futures Basic tier returns historical session bars with an 8-hour delay and a 5-requests-per-minute limit. The app never labels these as live prices. Stock quotes still require TWELVE_DATA_API_KEY. No broker, SEC/public-official disclosure feed, authentication, cloud database, or automated forecast engine is connected. Demo records are stored in the current browser only.
+## Provider and deployment notes
+Provider credentials are stored as Cloudflare Worker secrets. The GitHub deployment workflow may sync valid repository secrets, but intentionally skips malformed or missing optional secrets without deleting existing Cloudflare values. A provider marked "configured" means a secret binding exists; it does not prove the key is accepted by the upstream service. Provider health and data availability are reported separately.
+Massive Futures Basic returns historical session bars with an approximately eight-hour delay and a five-requests-per-minute limit. The app never labels these as live prices. Its successful response cache is 15 minutes; a separately marked last-successful snapshot can be served for up to 48 hours during rate limits or outages. No broker, public-official STOCK Act disclosure feed, authentication, cloud database, or automated forecast engine is connected. Demo records are stored in the current browser only.
 
 ## Eight planned engines
 1. Technical trend and indicators.
