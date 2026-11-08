@@ -118,6 +118,8 @@ jobs:
           FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
           EODHD_API_KEY: ${{ secrets.EODHD_API_KEY }}
           ALPHA_VANTAGE_API_KEY: ${{ secrets.ALPHA_VANTAGE_API_KEY }}
+          EULERPOOL_API_KEY: ${{ secrets.EULERPOOL_API_KEY }}
+          MARKETSTACK_API_KEY: ${{ secrets.MARKETSTACK_API_KEY }}
           SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
         run: |
           set -euo pipefail
@@ -129,6 +131,8 @@ jobs:
             "FMP_API_KEY",
             "EODHD_API_KEY",
             "ALPHA_VANTAGE_API_KEY",
+            "EULERPOOL_API_KEY",
+            "MARKETSTACK_API_KEY",
             "SEC_USER_AGENT"
           ];
           const payload = {};
@@ -140,13 +144,16 @@ jobs:
               continue;
             }
             if (value !== value.trim() || /[\\r\\n]/.test(value)) {
-              console.error(name + " contains leading/trailing whitespace or a line break; refusing to sync it.");
-              process.exit(1);
+              // Skip only the malformed key. Other valid provider credentials can still sync.
+              // Existing Cloudflare values are left untouched because omitted names are not sent.
+              console.error(name + " has surrounding whitespace or a line break; skipped without changing its Cloudflare value.");
+              missing.push(name + " (invalid formatting)");
+              continue;
             }
             payload[name] = value;
           }
-          if (!payload.MASSIVE_API_KEY) {
-            console.error("MASSIVE_API_KEY is required for the commodities engine; refusing deployment.");
+          if (Object.keys(payload).length === 0) {
+            console.error("No valid provider secrets were supplied; nothing was changed in Cloudflare.");
             process.exit(1);
           }
           console.error("Provider secrets present: " + Object.keys(payload).join(", "));
@@ -251,12 +258,12 @@ jobs:
           }
           console.log("PASS /api/health: Massive Futures credential is configured.");
 
-          const providerNames = ["massiveFutures", "twelveData", "finnhub", "fmp", "eodhd", "alphaVantage", "secEdgar"];
+          const providerNames = ["massiveFutures", "twelveData", "finnhub", "fmp", "eodhd", "eulerpool", "marketstack"];
           const missingProviders = providerNames.filter(name => health.providers?.[name] !== "configured");
           if (missingProviders.length) {
             throw new Error("/api/health: provider secrets are missing in Cloudflare: " + missingProviders.join(", "));
           }
-          console.log("PASS /api/health: all seven market-data provider secrets are configured.");
+          console.log("PASS /api/health: all seven active market-data provider secrets are configured (Alpha Vantage and SEC User-Agent remain optional).");
 
           const quotes = await getJson("/api/quotes");
           if (quotes.available !== 4 || quotes.total !== 4 || !quotes.data ||
