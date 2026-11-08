@@ -140,3 +140,63 @@ jobs:
           process.exit(1);
           NODE
 
+      - name: Verify deployed API endpoints
+        env:
+          BASE_URL: https://stock-scannet-pro.china2sell.workers.dev
+        run: |
+          node --input-type=module <<'NODE'
+          const base = process.env.BASE_URL;
+          async function getJson(path) {
+            const response = await fetch(new URL(path, base), {
+              headers: { Accept: "application/json" },
+              signal: AbortSignal.timeout(20000)
+            });
+            let body;
+            try { body = await response.json(); }
+            catch { throw new Error(`${path}: response was not valid JSON (HTTP ${response.status})`); }
+            if (!response.ok) {
+              throw new Error(`${path}: HTTP ${response.status}: ${body?.error ?? body?.message ?? "API request failed"}`);
+            }
+            return body;
+          }
+
+          const health = await getJson("/api/health");
+          if (health.status !== "ok" || health.assets !== "bound") {
+            throw new Error("/api/health: Worker or static assets are not healthy.");
+          }
+          console.log("PASS /api/health: Worker and static assets are available.");
+
+          for (const provider of ["massiveFutures", "twelveData"]) {
+            if (health.providers?.[provider] !== "configured") {
+              throw new Error(`/api/health: ${provider} key is not configured in the Cloudflare Worker.`);
+            }
+          }
+          console.log("PASS /api/health: Massive Futures and Twelve Data credentials are configured.");
+
+          const quotes = await getJson("/api/quotes");
+          const requiredSymbols = ["AAPL", "MSFT", "NVDA", "XLE"];
+          for (const symbol of requiredSymbols) {
+            const quote = quotes.data?.[symbol];
+            if (!quote || quote.symbol !== symbol || quote.close === undefined || quote.close === null || quote.status === "error") {
+              throw new Error(`/api/quotes: missing or invalid quote for ${symbol}.`);
+            }
+          }
+          if (quotes.source !== "Twelve Data") {
+            throw new Error("/api/quotes: unexpected data source.");
+          }
+          console.log("PASS /api/quotes: valid Twelve Data quotes returned for AAPL, MSFT, NVDA and XLE.");
+
+          const commodities = await getJson("/api/commodities");
+          if (commodities.providerConfigured !== true) {
+            throw new Error("/api/commodities: Massive Futures provider is not configured.");
+          }
+          for (const key of ["GC", "CL"]) {
+            const quote = commodities.data?.[key];
+            if (!quote || quote.available !== true || !(quote.close || quote.price)) {
+              throw new Error(`/api/commodities: ${key} (gold/oil) is unavailable: ${quote?.error ?? "no valid price returned"}`);
+            }
+          }
+          console.log("PASS /api/commodities: valid gold (GC) and WTI oil (CL) prices returned from Massive Futures.");
+          console.log("API integration smoke tests passed. No API keys or quote payloads were printed.");
+          NODE
+
