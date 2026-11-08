@@ -748,13 +748,15 @@ export default {
         return Response.json({ error: "Method not allowed." }, { status: 405 });
       }
 
-      const cacheKey = new Request(new URL("/api/commodities?provider=massive-v1", url.origin), { method: "GET" });
+      const cacheKey = new Request(new URL("/api/commodities?provider=massive-v2", url.origin), { method: "GET" });
+      const staleCacheKey = new Request(new URL("/api/commodities?provider=massive-stale-v1", url.origin), { method: "GET" });
       const edgeCache = (globalThis as unknown as { caches: { default: Cache } }).caches.default;
       const cached = await edgeCache.match(cacheKey);
       if (cached) return cached;
 
       if (!env.MASSIVE_API_KEY?.trim()) {
         return Response.json({
+          status: "UNAVAILABLE",
           data: unavailableCommodities("מפתח Massive חסר. יש להגדיר MASSIVE_API_KEY כסוד ב-Cloudflare Worker."),
           provider: "Massive Futures",
           providerConfigured: false,
@@ -768,34 +770,65 @@ export default {
       try {
         const data = await fetchMassiveCommodities(env.MASSIVE_API_KEY.trim());
         const available = Object.values(data).filter((quote) => (quote as { available?: boolean }).available).length;
-        const response = Response.json({
+        const fetchedAt = new Date().toISOString();
+        const payload = {
+          status: available ? "READY" : "UNAVAILABLE",
           data,
           provider: "Massive Futures",
           providerConfigured: true,
+          stale: false,
           planNote: "במסלול Futures Basic החינמי הנתונים היסטוריים בעיכוב של 8 שעות.",
           contractSelection: "החוזה הפעיל הקרוב לפקיעה עם מרווח של 14 ימים לפחות; בחירה זו אינה מבוססת על נפח מסחר.",
-          fetchedAt: new Date().toISOString(),
+          fetchedAt,
           available,
           total: FUTURES_PRODUCTS.length
-        }, {
-          headers: { "Cache-Control": "public, max-age=240, s-maxage=240" }
+        };
+        const response = Response.json(payload, {
+          headers: { "Cache-Control": "public, max-age=900, s-maxage=900" }
         });
-        await edgeCache.put(cacheKey, response.clone());
+        if (available > 0) {
+          await edgeCache.put(cacheKey, response.clone());
+          const staleSnapshot = Response.json(payload, {
+            headers: { "Cache-Control": "public, max-age=172800, s-maxage=172800" }
+          });
+          await edgeCache.put(staleCacheKey, staleSnapshot);
+        }
         return response;
       } catch (error) {
         const message = error instanceof Error ? error.message : "ספק Massive אינו זמין כרגע.";
+        const staleResponse = await edgeCache.match(staleCacheKey);
+        if (staleResponse) {
+          try {
+            const previous = await staleResponse.json() as Record<string, any>;
+            const staleData = previous.data && typeof previous.data === "object" ? previous.data : {};
+            const staleAvailable = Object.values(staleData).filter((quote: any) => quote?.available === true).length;
+            if (staleAvailable > 0) {
+              return Response.json({
+                ...previous,
+                status: "DEGRADED",
+                stale: true,
+                staleReason: message,
+                lastAttemptAt: new Date().toISOString(),
+                available: staleAvailable,
+                total: FUTURES_PRODUCTS.length,
+                note: "מוצגים נתונים אחרונים שנשמרו בהצלחה. הם אינם רעננים; יש לבדוק את תאריך הנתון לפני שימוש."
+              }, { headers: { "Cache-Control": "no-store" } });
+            }
+          } catch {
+            // Ignore an invalid stale snapshot and return an explicit unavailable state below.
+          }
+        }
         return Response.json({
+          status: "UNAVAILABLE",
           data: unavailableCommodities(message),
           provider: "Massive Futures",
           providerConfigured: true,
+          stale: false,
           error: message,
           fetchedAt: new Date().toISOString(),
           available: 0,
           total: FUTURES_PRODUCTS.length
-        }, {
-          status: 502,
-          headers: { "Cache-Control": "no-store" }
-        });
+        }, { headers: { "Cache-Control": "no-store" } });
       }
     }
 
