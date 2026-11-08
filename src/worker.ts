@@ -1,4 +1,5 @@
 import { analyzeTechnical } from './marketAnalysis.js';
+import { analyzeMomentum } from './researchEngines.js';
 import { assessLongSetup } from './signalEngine.js';
 import { ASSET_UNIVERSE, MAX_TRACKED_ASSETS, DYNAMIC_WATCH_SLOTS, CURRENTLY_CONNECTED_SYMBOLS } from './assetUniverse.js';
 import {
@@ -163,15 +164,13 @@ export default {
           const avgVolume = lookback.length ? lookback.reduce((sum,c) => sum + c.volume, 0) / lookback.length : null;
           const volumeRatio = avgVolume && latest ? latest.volume / avgVolume : null;
           const breakout = resistance !== null && latest ? latest.close > resistance : false;
-          const momentumStatus = candles.length >= 50 ? "READY" : "INSUFFICIENT_DATA";
+          const momentumMetrics = analyzeMomentum(candles);
           return [symbol, {
             source: "Twelve Data", interval: "1day", delayedOrLive: "לפי זמינות ומגבלות תוכנית הספק",
             candles: candles.length, asOf: technical.asOf, lastPrice: latest?.close ?? null,
             technical: { ...technical, support20: support, resistance20: resistance },
             momentum: {
-              status: momentumStatus, breakout20: breakout, averageVolume20: avgVolume,
-              latestVolume: latest?.volume ?? null, relativeVolume: volumeRatio,
-              atrPercent: latest && technical.atr14 ? Number((technical.atr14 / latest.close * 100).toFixed(3)) : null,
+              ...momentumMetrics,
               signal: setup.signal, score: setup.score, entryReference: setup.entryReference,
               stopLoss: setup.stopLoss, takeProfit: setup.takeProfit, riskReward: setup.riskReward,
               suggestedQuantity: setup.suggestedQuantity, reasons: setup.reasons
