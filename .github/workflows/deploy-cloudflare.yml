@@ -276,6 +276,23 @@ jobs:
           }
           console.log("PASS /api/quotes: four valid market quotes returned. Provider: " + String(quotes.source) + ".");
 
+          const engines = await getJson("/api/engines?symbols=AAPL,MSFT,NVDA,XLE");
+          const engineSymbols = ["AAPL", "MSFT", "NVDA", "XLE"];
+          if (engines.source !== "Twelve Data" ||
+              !Array.isArray(engines.activeEngines) ||
+              !engines.activeEngines.includes("technical") ||
+              !engines.activeEngines.includes("momentum") ||
+              !engines.data ||
+              engineSymbols.some(symbol => {
+                const row = engines.data[symbol];
+                return !row || !Number.isFinite(Number(row.lastPrice)) || Number(row.lastPrice) <= 0 ||
+                  !Number.isFinite(Number(row.candles)) || Number(row.candles) < 2 ||
+                  !row.technical || !row.momentum;
+              })) {
+            throw new Error("/api/engines: technical/momentum engine payload is missing or invalid.");
+          }
+          console.log("PASS /api/engines: technical and momentum returned valid OHLCV analysis for all four symbols; candles and as-of timestamps included.");
+
 
           const commodities = await getJson("/api/commodities");
           if (commodities.providerConfigured !== true) {
