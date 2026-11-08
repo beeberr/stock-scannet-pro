@@ -1,7 +1,7 @@
 export interface MacroObservation { date: string; value: number }
 export interface MacroSeries { key: string; label: string; unit: string; observations: MacroObservation[] }
 export function parseFredCsv(csv: string): MacroObservation[] {
-  const lines = csv.trim().split(/\\r?\\n/);
+  const lines = csv.trim().split(/\r?\n/);
   if (lines.length < 2) return [];
   return lines.slice(1).flatMap(line => {
     const parts = line.split(",");
