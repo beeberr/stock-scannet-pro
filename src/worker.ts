@@ -523,7 +523,7 @@ export default {
       if (!key) return Response.json({ engine: "indices-sectors", status: "UNAVAILABLE", provider: "FMP", providerConfigured: false, data: {}, error: "מפתח FMP אינו מוגדר ב-Worker." }, { headers: { "Cache-Control": "no-store" } });
       const symbols = ["SPY", "QQQ", "DIA", "IWM", "XLF", "XLK", "XLE", "XLV", "XLI", "XLY", "XLP"];
       const cacheKey = new Request(new URL("/api/indices?provider=fmp-quotes-v1", url.origin), { method: "GET" });
-      const edgeCache = (globalThis as unknown as { caches: { default: Cache } }).default;
+      const edgeCache = (globalThis as unknown as { caches: { default: Cache } }).caches.default;
       const cached = await edgeCache.match(cacheKey);
       if (cached) return cached;
       const entries = await Promise.all(symbols.map(async symbol => {
