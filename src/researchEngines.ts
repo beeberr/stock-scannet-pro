@@ -20,7 +20,7 @@ export function analyzeMomentum(candles: readonly Candle[]): MomentumAnalysis {
   )) throw new Error('נתוני מומנטום מכילים נרות OHLCV לא תקינים');
   if (candles.length < 21) return {
     status:'INSUFFICIENT_DATA', breakout20:false, averageVolume20:null,
-    latestVolume:candles.at(-1)?.volume ?? null, relativeVolume:null, atrPercent:null
+    latestVolume:(candles.length ? candles[candles.length - 1].volume : null), relativeVolume:null, atrPercent:null
   };
   const latest = candles[candles.length-1];
   const previous = candles.slice(-21,-1);
