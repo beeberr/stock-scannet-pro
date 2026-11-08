@@ -3,7 +3,7 @@ import { parseFredCsv, summarizeMacroSeries, buildCommodityMacroContext } from '
 const rows=parseFredCsv('observation_date,DGS10\n2026-01-01,4.1\n2026-01-02,.\n2026-01-03,4.2');
 assert.deepEqual(rows,[{date:'2026-01-01',value:4.1},{date:'2026-01-03',value:4.2}]);
 const summary=summarizeMacroSeries({key:'us_10y',label:'10Y',unit:'%',observations:rows});
-assert.equal(summary.latest,4.2); assert.equal(summary.change,0.1); assert.equal(summary.status,'READY');
+assert.equal(summary.latest,4.2); assert.ok(Math.abs(summary.change - 0.1) < 1e-9); assert.equal(summary.status,'READY');
 assert.equal(summarizeMacroSeries({key:'x',label:'x',unit:'',observations:[]}).status,'UNAVAILABLE');
 const ctx=buildCommodityMacroContext([{key:'crude_inventory',label:'inventory',unit:'',observations:[{date:'a',value:10},{date:'b',value:12}]}]);
 assert.match(ctx.interpretation.crudeInventory,/עלה/);
