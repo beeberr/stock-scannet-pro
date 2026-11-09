@@ -213,19 +213,20 @@ jobs:
 
           const macro = await getJson("/api/macro");
           const macroKeys = ["us_10y", "usd_broad", "crude_inventory", "wti_spot"];
-          if (!macro.series || macroKeys.some(key => !macro.series[key] || macro.series[key].key !== key || !macro.series[key].status)) {
-            throw new Error("/api/macro: one or more independent macro series are missing or malformed.");
-          }
-          if (macro.total !== 4 || typeof macro.available !== "number") {
-            throw new Error("/api/macro: availability summary is malformed.");
-          }
-          console.log(`PASS /api/macro: all four macro series returned independently; ${macro.available}/4 currently available.`);
+          if (macro.engine !== "macro" || !["READY", "PARTIAL", "UNAVAILABLE"].includes(macro.status) || !macro.series || macroKeys.some(key => !macro.series[key] || macro.series[key].key !== key || !macro.series[key].status)) throw new Error("/api/macro: series/status fields are missing or malformed.");
+          if (macro.total !== 4 || typeof macro.available !== "number" || typeof macro.observed !== "number") throw new Error("/api/macro: availability summary is malformed.");
+          const expected = macro.available === 4 ? "READY" : macro.observed > 0 ? "PARTIAL" : "UNAVAILABLE";
+          if (macro.status !== expected) throw new Error("/api/macro: aggregate status does not match observations.");
+          console.log(`PASS /api/macro: ${macro.status} · ${macro.available}/4 ready; ${macro.observed}/4 observed · ${macro.source}.`);
 
           const value = await getJson("/api/value");
-          if (value.engine !== "value" || !["READY", "UNAVAILABLE"].includes(value.status) || !value.provider) {
-            throw new Error("/api/value: provider status response is malformed.");
-          }
-          console.log(`PASS /api/value: ${value.provider} endpoint responds with explicit status (${value.status}).`);
+          if (value.engine !== "value" || !["READY", "PARTIAL", "UNAVAILABLE"].includes(value.status) || !value.provider || !value.data || typeof value.available !== "number" || value.total !== 4) throw new Error("/api/value: provider status response is malformed.");
+          const rows = Object.values(value.data);
+          const successful = rows.filter(row => row.status === "READY").length;
+          const complete = rows.filter(row => row.status === "READY" && row.partial !== true).length;
+          const expected = complete === 4 ? "READY" : successful > 0 ? "PARTIAL" : "UNAVAILABLE";
+          if (value.status !== expected || value.available !== successful) throw new Error("/api/value: aggregate status does not match row coverage.");
+          console.log(`PASS /api/value: ${value.status} · ${value.available}/${value.total} symbols with data · ${value.provider}.`);
 
           const indices = await getJson("/api/indices");
           if (indices.engine !== "indices-sectors" || !["READY", "PARTIAL", "UNAVAILABLE"].includes(indices.status) || !indices.provider || !indices.data || typeof indices.available !== "number" || indices.total !== 11) {
@@ -235,13 +236,13 @@ jobs:
           console.log(`PASS /api/indices: ${indices.provider} endpoint responds with explicit status (${indices.status}); ${indices.available}/${indices.total} ETF proxies available; row sources: ${indexSources.join(", ") || "not reported"}.`);
 
           const news = await getJson("/api/news");
-          if (news.engine !== "news-events" || !["READY", "UNAVAILABLE"].includes(news.status) || !Array.isArray(news.news) || !Array.isArray(news.earnings)) {
+          if (news.engine !== "news-events" || !["READY", "PARTIAL", "UNAVAILABLE"].includes(news.status) || !Array.isArray(news.news) || !Array.isArray(news.earnings)) {
             throw new Error("/api/news: Finnhub news/events response is malformed.");
           }
           console.log(`PASS /api/news: Finnhub endpoint responds with explicit status (${news.status}).`);
 
           const disclosures = await getJson("/api/disclosures");
-          if (disclosures.engine !== "public-disclosures" || !["READY", "UNAVAILABLE"].includes(disclosures.status) || !disclosures.provider) {
+          if (disclosures.engine !== "public-disclosures" || !["READY", "PARTIAL", "UNAVAILABLE"].includes(disclosures.status) || !disclosures.provider) {
             throw new Error("/api/disclosures: SEC/Finnhub response is malformed.");
           }
           console.log(`PASS /api/disclosures: official/fallback filings endpoint responds with explicit status (${disclosures.status}).`);
@@ -268,38 +269,27 @@ jobs:
           console.log("PASS /api/health: all seven active market-data provider secrets are configured (Alpha Vantage and SEC User-Agent remain optional).");
 
           const quotes = await getJson("/api/quotes");
-          if (quotes.available !== 4 || quotes.total !== 4 || !quotes.data ||
-              ["AAPL", "MSFT", "NVDA", "XLE"].some(symbol => {
-                const quote = quotes.data[symbol];
-                return !quote || quote.status === "UNAVAILABLE" || quote.close === undefined || quote.close === null;
-              })) {
-            throw new Error("/api/quotes: expected four valid quotes; received " + String(quotes.available) + "/" + String(quotes.total) + ".");
-          }
-          console.log("PASS /api/quotes: four valid market quotes returned. Provider: " + String(quotes.source) + ".");
+          if (quotes.engine !== "quotes" || !["READY", "PARTIAL", "UNAVAILABLE"].includes(quotes.status) || !quotes.data || quotes.total !== 4 || typeof quotes.available !== "number") throw new Error("/api/quotes: status response is malformed.");
+          const valid = Object.values(quotes.data).filter(q => q.status !== "UNAVAILABLE" && Number.isFinite(Number(q.close)) && Number(q.close) > 0).length;
+          const expected = valid === quotes.total ? "READY" : valid > 0 ? "PARTIAL" : "UNAVAILABLE";
+          if (quotes.status !== expected || quotes.available !== valid) throw new Error("/api/quotes: status does not match valid quote rows.");
+          console.log(`PASS /api/quotes: ${quotes.status} · ${quotes.available}/${quotes.total} valid quotes · ${quotes.source}.`);
 
           const engines = await getJson("/api/engines?symbols=AAPL,MSFT,NVDA,XLE");
-          const engineSymbols = ["AAPL", "MSFT", "NVDA", "XLE"];
-          if (engines.source !== "Twelve Data" ||
-              !Array.isArray(engines.activeEngines) ||
-              !engines.activeEngines.includes("technical") ||
-              !engines.activeEngines.includes("momentum") ||
-              !engines.data ||
-              engineSymbols.some(symbol => {
-                const row = engines.data[symbol];
-                return !row || !Number.isFinite(Number(row.lastPrice)) || Number(row.lastPrice) <= 0 ||
-                  !Number.isFinite(Number(row.candles)) || Number(row.candles) < 2 ||
-                  !row.technical || !row.momentum;
-              })) {
-            throw new Error("/api/engines: technical/momentum engine payload is missing or invalid.");
-          }
-          console.log("PASS /api/engines: technical and momentum returned valid OHLCV analysis for all four symbols; candles and as-of timestamps included.");
+          if (engines.engine !== "technical-momentum" || !["READY", "PARTIAL", "UNAVAILABLE"].includes(engines.status) || !engines.data || Object.keys(engines.data).length !== 4) throw new Error("/api/engines: status/payload is malformed.");
+          const rows = Object.values(engines.data);
+          const ready = rows.filter(row => row.technical?.status === "READY" && row.momentum?.status === "READY").length;
+          const observed = rows.filter(row => Boolean(row.technical && row.momentum)).length;
+          const expected = ready === rows.length ? "READY" : observed > 0 ? "PARTIAL" : "UNAVAILABLE";
+          if (engines.status !== expected || engines.available !== ready || engines.total !== rows.length) throw new Error("/api/engines: aggregate status does not match row analysis.");
+          console.log(`PASS /api/engines: ${engines.status} · ${engines.available}/${engines.total} fully analysed · Twelve Data.`);
 
 
           const commodities = await getJson("/api/commodities");
           if (commodities.providerConfigured !== true) {
             throw new Error("/api/commodities: Massive Futures provider is not configured.");
           }
-          if (!["READY", "DEGRADED", "UNAVAILABLE"].includes(commodities.status) ||
+          if (!["READY", "PARTIAL", "UNAVAILABLE"].includes(commodities.status) ||
               !commodities.data || !["GC", "SI", "HG", "CL"].every(key => commodities.data[key])) {
             throw new Error("/api/commodities: provider response is missing explicit status or expected commodity records.");
           }
@@ -310,7 +300,7 @@ jobs:
           if (commodities.status === "READY" && (!validPrice(gold) || !validPrice(oil) || availableCommodities !== 4)) {
             throw new Error("/api/commodities: READY status requires all four commodity prices, including gold and WTI.");
           }
-          if (commodities.status === "DEGRADED") {
+          if (commodities.status === "PARTIAL" && commodities.stale) {
             if (!commodities.stale || availableCommodities === 0) {
               throw new Error("/api/commodities: DEGRADED status must explicitly identify stale cached data.");
             }

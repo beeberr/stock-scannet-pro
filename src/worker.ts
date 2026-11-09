@@ -1,4 +1,5 @@
 import { analyzeTechnical } from './marketAnalysis.js';
+import { summarizeStatus } from './engineStatus.js';
 import { analyzeMomentum } from './researchEngines.js';
 import { assessLongSetup } from './signalEngine.js';
 import { ASSET_UNIVERSE, MAX_TRACKED_ASSETS, DYNAMIC_WATCH_SLOTS, CURRENTLY_CONNECTED_SYMBOLS } from './assetUniverse.js';
@@ -180,7 +181,7 @@ export default {
       if (!symbols.length || symbols.length > 4 || symbols.some(symbol => !ALLOWED_SYMBOLS.has(symbol))) {
         return Response.json({ error: "ניתן לנתח עד ארבעה סימולים מחוברים: AAPL, MSFT, NVDA, XLE." }, { status: 400 });
       }
-      const cacheKey = new Request(new URL("/api/engines?provider=twelvedata-v1&symbols=" + symbols.slice().sort().join(","), url.origin), { method: "GET" });
+      const cacheKey = new Request(new URL("/api/engines?provider=twelvedata-v2-status&symbols=" + symbols.slice().sort().join(","), url.origin), { method: "GET" });
       const edgeCache = (globalThis as unknown as { caches: { default: Cache } }).caches.default;
       const cached = await edgeCache.match(cacheKey);
       if (cached) return cached;
@@ -221,13 +222,18 @@ export default {
             }
           }] as const;
         }));
+        const data = Object.fromEntries(entries);
+        const rows = Object.values(data);
+        const available = rows.filter((row: any) => row.technical?.status === "READY" && row.momentum?.status === "READY").length;
+        const observed = rows.filter((row: any) => Boolean(row.technical && row.momentum)).length;
         const body = Response.json({
+          engine: "technical-momentum", status: summarizeStatus(available, symbols.length, observed), available, total: symbols.length,
           fetchedAt: new Date().toISOString(), source: "Twelve Data",
           activeEngines: ["technical", "momentum"],
           integratedEngines: ["value", "indices-sectors", "news-events", "public-disclosures"],
           partialEngines: ["macro", "gold-oil"],
           plannedEngines: ["bank-forecast-consensus", "commodity-supply-demand", "political-disclosures"],
-          data: Object.fromEntries(entries),
+          data,
           note: "ניתוח טכני ומומנטום מחושבים מנרות יומיים שהתקבלו מהספק. תוצאות הן מחקריות בלבד, אינן תחזית או הוראת מסחר."
         }, { headers: { "Cache-Control": "public, max-age=900, s-maxage=900" } });
         await edgeCache.put(cacheKey, body.clone());
@@ -241,7 +247,7 @@ export default {
     if (url.pathname === "/api/macro") {
       if (request.method !== "GET") return Response.json({ error: "Method not allowed." }, { status: 405 });
       // Versioned key deliberately bypasses any cached all-or-nothing FRED response.
-      const cacheKey = new Request(new URL("/api/macro?provider=fred-v2-independent-series", url.origin), { method: "GET" });
+      const cacheKey = new Request(new URL("/api/macro?provider=fred-v3-status", url.origin), { method: "GET" });
       const edgeCache = (globalThis as unknown as { caches: { default: Cache } }).caches.default;
       const cached = await edgeCache.match(cacheKey);
       if (cached) return cached;
@@ -329,11 +335,12 @@ export default {
       }));
 
       const series = Object.fromEntries(rows);
-      const available = rows.filter(([, value]) => value.status === "READY" || value.status === "INSUFFICIENT_DATA").length;
+      const available = rows.filter(([, value]) => value.status === "READY").length;
+      const observed = rows.filter(([, value]) => value.status !== "UNAVAILABLE").length;
+      const sources = [...new Set(rows.map(([, value]) => value.source || "FRED"))];
       const response = Response.json({
-        source: "Federal Reserve Bank of St. Louis (FRED)",
-        fetchedAt: new Date().toISOString(),
-        available,
+        engine: "macro", status: summarizeStatus(available, definitions.length, observed),
+        source: sources.join(" + "), fetchedAt: new Date().toISOString(), available, observed,
         total: definitions.length,
         series,
         note: "כל סדרה נשלפת ומטופלת בנפרד. כשל בסדרה אחת אינו מונע הצגת סדרות אחרות. ההשוואה היא לתצפית לפני כ-20 פרסומים; תדירות הסדרות שונה."
@@ -350,13 +357,13 @@ export default {
       const key = env.FMP_API_KEY?.trim();
       const eodhdKey = env.EODHD_API_KEY?.trim();
       const eulerpoolKey = env.EULERPOOL_API_KEY?.trim();
-      if (!key && !eodhdKey && !eulerpoolKey) return Response.json({ engine: "value", status: "UNAVAILABLE", provider: "FMP/EODHD/Eulerpool", providerConfigured: false, data: {}, error: "לא הוגדר מפתח FMP, EODHD או Eulerpool ב-Worker." }, { headers: { "Cache-Control": "no-store" } });
+      if (!key && !eodhdKey && !eulerpoolKey) return Response.json({ engine: "value", status: "UNAVAILABLE", available: 0, total: 4, provider: "FMP/EODHD/Eulerpool", providerConfigured: false, data: {}, error: "לא הוגדר מפתח FMP, EODHD או Eulerpool ב-Worker." }, { headers: { "Cache-Control": "no-store" } });
       const symbols = (url.searchParams.get("symbols") || "AAPL,MSFT,NVDA,JPM").split(",").map(s => s.trim().toUpperCase()).filter(Boolean);
       const equitySymbols = new Set<string>(ASSET_UNIVERSE.filter(asset => asset[2] === "מניה").map(asset => asset[0]));
       if (!symbols.length || symbols.length > 8 || symbols.some(symbol => !equitySymbols.has(symbol))) {
         return Response.json({ error: "ניתן לבקש עד שמונה מניות מתוך מאגר המניות." }, { status: 400 });
       }
-      const cacheKey = new Request(new URL("/api/value?provider=fmp-stable-v1&symbols=" + symbols.slice().sort().join(","), url.origin), { method: "GET" });
+      const cacheKey = new Request(new URL("/api/value?provider=fmp-stable-v2-status&symbols=" + symbols.slice().sort().join(","), url.origin), { method: "GET" });
       const edgeCache = (globalThis as unknown as { caches: { default: Cache } }).caches.default;
       const cached = await edgeCache.match(cacheKey);
       if (cached) return cached;
@@ -486,8 +493,10 @@ export default {
         }
       }));
       const data = Object.fromEntries(entries);
+      const available = entries.filter(([, row]) => row.status === "READY").length;
+      const complete = entries.filter(([, row]) => row.status === "READY" && row.partial !== true).length;
       const response = Response.json({
-        engine: "value", status: entries.some(([, row]) => row.status === "READY") ? "READY" : "UNAVAILABLE",
+        engine: "value", status: summarizeStatus(complete, symbols.length, available), available, total: symbols.length,
         provider: key ? (eodhdKey && eulerpoolKey ? "FMP with EODHD/Eulerpool fallback" : eodhdKey ? "FMP with EODHD fallback" : eulerpoolKey ? "FMP with Eulerpool fallback" : "FMP") : (eodhdKey ? "EODHD" : "Eulerpool"), providerConfigured: true, fetchedAt: new Date().toISOString(), data,
         note: "מדדי הערכת שווי ודוחות פיננסיים בלבד; זמינות השדות תלויה בהרשאות תוכנית FMP. אין לראות בכך המלצת השקעה."
       }, { headers: { "Cache-Control": "public, max-age=21600, s-maxage=21600" } });
@@ -499,7 +508,7 @@ export default {
       if (request.method !== "GET") return Response.json({ error: "Method not allowed." }, { status: 405 });
       const key = env.FINNHUB_API_KEY?.trim();
       if (!key) return Response.json({ engine: "news-events", status: "UNAVAILABLE", provider: "Finnhub", providerConfigured: false, news: [], earnings: [], error: "מפתח Finnhub אינו מוגדר ב-Worker." }, { headers: { "Cache-Control": "no-store" } });
-      const cacheKey = new Request(new URL("/api/news?provider=finnhub-v1", url.origin), { method: "GET" });
+      const cacheKey = new Request(new URL("/api/news?provider=finnhub-v2-status", url.origin), { method: "GET" });
       const edgeCache = (globalThis as unknown as { caches: { default: Cache } }).caches.default;
       const cached = await edgeCache.match(cacheKey);
       if (cached) return cached;
@@ -520,9 +529,12 @@ export default {
       const news = newsResult.status === "fulfilled" && Array.isArray(newsResult.value) ? newsResult.value.slice(0, 30) : [];
       const earningsPayload = earningsResult.status === "fulfilled" ? earningsResult.value as { earningsCalendar?: unknown[] } : null;
       const earnings = Array.isArray(earningsPayload?.earningsCalendar) ? earningsPayload.earningsCalendar.slice(0, 30) : [];
-      const status = news.length || earnings.length ? "READY" : "UNAVAILABLE";
+      const newsAvailable = newsResult.status === "fulfilled" && Array.isArray(newsResult.value);
+      const earningsAvailable = earningsResult.status === "fulfilled" && Array.isArray(earningsPayload?.earningsCalendar);
+      const available = Number(newsAvailable) + Number(earningsAvailable);
+      const status = summarizeStatus(available, 2, available);
       const response = Response.json({
-        engine: "news-events", status, provider: "Finnhub", providerConfigured: true,
+        engine: "news-events", status, available, total: 2, provider: "Finnhub", providerConfigured: true,
         fetchedAt: new Date().toISOString(), news, earnings,
         errors: {
           news: newsResult.status === "rejected" ? String(newsResult.reason) : null,
@@ -563,9 +575,10 @@ export default {
             }
           }));
           const data = Object.fromEntries(entries);
+          const available = entries.filter(([, row]) => row.status !== "UNAVAILABLE").length;
           return Response.json({
             engine: "public-disclosures",
-            status: entries.some(([, row]) => row.status === "READY") ? "READY" : "UNAVAILABLE",
+            status: summarizeStatus(available, symbols.length, available), available, total: symbols.length,
             provider: "Finnhub filings", providerConfigured: true, fetchedAt: new Date().toISOString(), data,
             note: "מוצגים דיווחי חברות כפי שסופקו על ידי Finnhub. לחיבור ישיר למקור SEC EDGAR יש להגדיר SEC_USER_AGENT תקין. אין כאן גילויי עסקאות של נבחרי ציבור."
           }, { headers: { "Cache-Control": "public, max-age=1800, s-maxage=1800" } });
@@ -576,7 +589,7 @@ export default {
           error: "חסר SEC_USER_AGENT וגם לא הוגדר מפתח Finnhub לשימוש כחלופה."
         }, { headers: { "Cache-Control": "no-store" } });
       }
-      const cacheKey = new Request(new URL("/api/disclosures?provider=sec-edgar-v1&symbols=" + symbols.slice().sort().join(","), url.origin), { method: "GET" });
+      const cacheKey = new Request(new URL("/api/disclosures?provider=sec-edgar-v2-status&symbols=" + symbols.slice().sort().join(","), url.origin), { method: "GET" });
       const edgeCache = (globalThis as unknown as { caches: { default: Cache } }).caches.default;
       const cached = await edgeCache.match(cacheKey);
       if (cached) return cached;
@@ -616,9 +629,10 @@ export default {
           }
         }));
         const data = Object.fromEntries(entries);
+        const available = entries.filter(([, row]) => row.status !== "UNAVAILABLE").length;
         const response = Response.json({
           engine: "public-disclosures",
-          status: entries.some(([, row]) => row.status === "READY") ? "READY" : "UNAVAILABLE",
+          status: summarizeStatus(available, symbols.length, available), available, total: symbols.length,
           provider: "SEC EDGAR", providerConfigured: true, fetchedAt: new Date().toISOString(), data,
           note: "SEC EDGAR מכסה דיווחי חברות ובעלי עניין כגון Form 4; הוא אינו מאגר גילויי עסקאות של נבחרי ציבור לפי STOCK Act."
         }, { headers: { "Cache-Control": "public, max-age=1800, s-maxage=1800" } });
@@ -728,16 +742,17 @@ export default {
           version: "2026-11-08-multi-provider-engines",
           assets: "bound",
           providers: {
-            massiveFutures: env.MASSIVE_API_KEY ? "configured" : "missing-key",
-            twelveData: env.TWELVE_DATA_API_KEY ? "configured" : "missing-key",
-            finnhub: env.FINNHUB_API_KEY ? "configured" : "missing-key",
-            fmp: env.FMP_API_KEY ? "configured" : "missing-key",
-            eodhd: env.EODHD_API_KEY ? "configured" : "missing-key",
-            alphaVantage: env.ALPHA_VANTAGE_API_KEY ? "configured" : "missing-key",
-            eulerpool: env.EULERPOOL_API_KEY ? "configured" : "missing-key",
-            marketstack: env.MARKETSTACK_API_KEY ? "configured" : "missing-key",
-            secEdgar: env.SEC_USER_AGENT ? "configured" : "missing-user-agent"
-          }
+            massiveFutures: env.MASSIVE_API_KEY?.trim() ? "configured" : "missing-key",
+            twelveData: env.TWELVE_DATA_API_KEY?.trim() ? "configured" : "missing-key",
+            finnhub: env.FINNHUB_API_KEY?.trim() ? "configured" : "missing-key",
+            fmp: env.FMP_API_KEY?.trim() ? "configured" : "missing-key",
+            eodhd: env.EODHD_API_KEY?.trim() ? "configured" : "missing-key",
+            alphaVantage: env.ALPHA_VANTAGE_API_KEY?.trim() ? "configured" : "missing-key",
+            eulerpool: env.EULERPOOL_API_KEY?.trim() ? "configured" : "missing-key",
+            marketstack: env.MARKETSTACK_API_KEY?.trim() ? "configured" : "missing-key",
+            secEdgar: env.SEC_USER_AGENT?.trim() ? "configured" : "missing-user-agent"
+          },
+          providerSemantics: "configured means a non-empty Worker secret binding only; upstream credentials are verified only by successful provider data responses."
         },
         { headers: { "Cache-Control": "no-store" } }
       );
@@ -748,7 +763,7 @@ export default {
         return Response.json({ error: "Method not allowed." }, { status: 405 });
       }
 
-      const cacheKey = new Request(new URL("/api/commodities?provider=massive-v2", url.origin), { method: "GET" });
+      const cacheKey = new Request(new URL("/api/commodities?provider=massive-v3-status", url.origin), { method: "GET" });
       const staleCacheKey = new Request(new URL("/api/commodities?provider=massive-stale-v1", url.origin), { method: "GET" });
       const edgeCache = (globalThis as unknown as { caches: { default: Cache } }).caches.default;
       const cached = await edgeCache.match(cacheKey);
@@ -805,7 +820,7 @@ export default {
             if (staleAvailable > 0) {
               return Response.json({
                 ...previous,
-                status: "DEGRADED",
+                status: "PARTIAL",
                 stale: true,
                 staleReason: message,
                 lastAttemptAt: new Date().toISOString(),
@@ -856,7 +871,7 @@ export default {
         return Response.json({ error: "Unsupported or invalid symbols." }, { status: 400 });
       }
 
-      const cacheKey = new Request(new URL("/api/quotes?provider=twelve-alpha-v1&symbols=" + symbols.slice().sort().join(","), url.origin), { method: "GET" });
+      const cacheKey = new Request(new URL("/api/quotes?provider=twelve-alpha-v2-status&symbols=" + symbols.slice().sort().join(","), url.origin), { method: "GET" });
       const edgeCache = (globalThis as unknown as { caches: { default: Cache } }).caches.default;
       const cached = await edgeCache.match(cacheKey);
       if (cached) return cached;
@@ -968,8 +983,10 @@ export default {
 
       const data = Object.fromEntries(entries);
       const available = entries.filter(([, row]) => !("status" in row) || row.status !== "UNAVAILABLE").length;
+      const status = summarizeStatus(available, symbols.length, available);
       const sources = [...new Set(entries.map(([, row]) => row.source).filter(Boolean))];
       const response = Response.json({
+        engine: "quotes", status, available, total: symbols.length,
         data,
         fetchedAt: new Date().toISOString(),
         source: sources.length === 1 ? sources[0] : sources.join(" + ") || "Twelve Data/Alpha Vantage",
