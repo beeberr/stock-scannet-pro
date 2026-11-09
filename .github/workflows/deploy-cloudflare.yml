@@ -109,6 +109,7 @@ jobs:
           command: deploy --config wrangler.jsonc
 
       - name: Sync all market data provider secrets to Cloudflare
+        if: ${{ !contains(github.event.head_commit.message, '[no-secret-sync]') }}
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
