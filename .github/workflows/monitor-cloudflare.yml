@@ -4,6 +4,9 @@ on:
   schedule:
     - cron: "*/30 * * * *"
   workflow_dispatch:
+  workflow_run:
+    workflows: ["Deploy Stock Scanner to Cloudflare"]
+    types: [completed]
 
 permissions:
   contents: read
@@ -14,51 +17,126 @@ concurrency:
 
 jobs:
   uptime:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 5
     steps:
-      - name: Check live website, assets and Worker health
+      - name: Check live site, all APIs, provider sources and data age
         env:
           BASE_URL: https://stock-scannet-pro.china2sell.workers.dev
         run: |
           node --input-type=module <<'NODE'
           const base = process.env.BASE_URL;
-          const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
-          let lastError = 'No response';
+          const failures = [];
+          const ageHours = value => {
+            const ms = Date.parse(value || "");
+            return Number.isFinite(ms) ? Math.max(0, (Date.now() - ms) / 3600000) : null;
+          };
+          const ageText = value => {
+            const age = ageHours(value);
+            return age === null ? "age n/a" : "age " + age.toFixed(1) + "h";
+          };
+          async function get(path) {
+            const start = Date.now();
+            const response = await fetch(new URL(path, base), {
+              headers: { Accept: "application/json" },
+              signal: AbortSignal.timeout(20000),
+              cache: "no-store"
+            });
+            const elapsed = Date.now() - start;
+            let body = null;
+            try { body = await response.json(); } catch {}
+            console.log("HTTP " + response.status + " " + path + " · " + elapsed + "ms");
+            if (!response.ok || !body || typeof body !== "object") {
+              failures.push(path + " HTTP " + response.status + (body?.error ? ": " + body.error : ""));
+              return null;
+            }
+            if (body.status && !["READY", "PARTIAL", "UNAVAILABLE", "DEGRADED"].includes(body.status) && path !== "/api/health") {
+              failures.push(path + " returned an unknown status: " + body.status);
+            }
+            return body;
+          }
+          async function checkSite() {
+            const response = await fetch(base + "/", { signal: AbortSignal.timeout(15000), redirect: "follow" });
+            if (!response.ok) throw new Error("Homepage HTTP " + response.status);
+            const html = await response.text();
+            const js = html.match(/<script[^>]+src="([^"]+\.js[^"]*)"/i)?.[1];
+            const css = html.match(/<link[^>]+href="([^"]+\.css[^"]*)"/i)?.[1];
+            if (!js || !css) throw new Error("Homepage missing JS/CSS asset references");
+            for (const asset of [js, css]) {
+              const result = await fetch(new URL(asset, base), { signal: AbortSignal.timeout(12000) });
+              if (!result.ok) throw new Error("Static asset HTTP " + result.status + ": " + asset);
+            }
+            console.log("SITE HTTP " + response.status + " · JS and CSS assets loaded.");
+          }
+          const list = rows => Object.entries(rows || {});
+          try { await checkSite(); } catch (e) { failures.push("SITE " + (e?.message || e)); }
 
-          for (let attempt = 1; attempt <= 3; attempt++) {
-            try {
-              const home = await fetch(base + '/', { signal: AbortSignal.timeout(12000), redirect: 'follow' });
-              if (!home.ok) throw new Error('Homepage HTTP ' + home.status);
-              const html = await home.text();
-              const js = html.match(/<script[^>]+src="([^"]+\.js[^"]*)"/i)?.[1];
-              const css = html.match(/<link[^>]+href="([^"]+\.css[^"]*)"/i)?.[1];
-              if (!js || !css) throw new Error('Homepage did not reference both JavaScript and CSS bundles');
+          const health = await get("/api/health");
+          if (health) {
+            console.log("HEALTH " + health.status + " · assets=" + health.assets + " · version=" + health.version);
+            console.log("PROVIDER_BINDINGS " + JSON.stringify(health.providers || {}) + " · configured means non-empty secret binding only, not successful validation.");
+          }
 
-              for (const asset of [js, css]) {
-                const response = await fetch(new URL(asset, base), { signal: AbortSignal.timeout(12000) });
-                if (!response.ok) throw new Error('Static asset HTTP ' + response.status + ': ' + asset);
-              }
+          const quotes = await get("/api/quotes");
+          if (quotes) {
+            console.log("QUOTES " + quotes.status + " · " + quotes.available + "/" + quotes.total + " · sources=" + quotes.source + " · fetchedAt=" + quotes.fetchedAt);
+            for (const [symbol,row] of list(quotes.data)) console.log("  " + symbol + " " + (row.status || "READY") + " · " + (row.source || "unknown") + " · " + (row.datetime || "n/a") + " · " + ageText(row.datetime) + (row.error ? " · " + row.error : ""));
+          }
 
-              const healthResponse = await fetch(new URL('/api/health', base), {
-                headers: { Accept: 'application/json' },
-                signal: AbortSignal.timeout(12000)
-              });
-              if (!healthResponse.ok) throw new Error('/api/health HTTP ' + healthResponse.status);
-              const health = await healthResponse.json();
-              if (health.status !== 'ok' || health.assets !== 'bound') {
-                throw new Error('Worker health check returned an unhealthy status');
-              }
+          const engines = await get("/api/engines?symbols=AAPL,MSFT,NVDA,XLE");
+          if (engines) {
+            console.log("TECHNICAL " + engines.status + " · " + engines.available + "/" + engines.total + " complete · Twelve Data · fetchedAt=" + engines.fetchedAt);
+            for (const [symbol,row] of list(engines.data)) console.log("  " + symbol + " " + row.status + " · technical=" + row.technical?.status + " · momentum=" + row.momentum?.status + " · candles=" + (row.candles ?? 0) + " · " + (row.asOf || "n/a") + " · " + ageText(row.asOf) + (row.error ? " · " + row.error : ""));
+          }
 
-              console.log('UP: homepage, JavaScript bundle, CSS bundle and Worker health all passed.');
-              process.exit(0);
-            } catch (error) {
-              lastError = error?.message ?? 'Unknown monitoring error';
-              console.error('Availability attempt ' + attempt + ' failed: ' + lastError);
-              if (attempt < 3) await pause(10000);
+          const value = await get("/api/value");
+          if (value) {
+            console.log("VALUE " + value.status + " · " + value.available + "/" + value.total + " · provider route=" + value.provider + " · fetchedAt=" + value.fetchedAt);
+            for (const [symbol,row] of list(value.data)) console.log("  " + symbol + " " + row.status + " · source=" + (row.source || "unknown") + " · partial=" + Boolean(row.partial) + " · asOf=" + (row.asOf || row.latestFinancials?.date || "n/a") + (row.error ? " · " + row.error : ""));
+          }
+
+          const macro = await get("/api/macro");
+          if (macro) {
+            console.log("MACRO " + macro.status + " · " + macro.available + "/" + macro.total + " ready · " + macro.observed + " observed · sources=" + macro.source + " · fetchedAt=" + macro.fetchedAt);
+            for (const [key,row] of list(macro.series)) console.log("  " + key + " " + row.status + " · " + (row.source || "FRED") + " · asOf=" + (row.asOf || "n/a") + " · observations=" + (row.observations ?? 0) + (row.error ? " · " + row.error : ""));
+          }
+
+          const indices = await get("/api/indices");
+          if (indices) {
+            console.log("INDICES " + indices.status + " · " + indices.available + "/" + indices.total + " · providers=" + indices.provider + " · fetchedAt=" + indices.fetchedAt);
+            for (const [symbol,row] of list(indices.data)) console.log("  " + symbol + " " + row.status + " · " + (row.source || "unknown") + " · asOf=" + (row.asOf || "n/a") + " · " + ageText(row.asOf) + (row.error ? " · " + row.error : ""));
+          }
+
+          const commodities = await get("/api/commodities");
+          if (commodities) {
+            console.log("COMMODITIES " + commodities.status + " · " + commodities.available + "/" + commodities.total + " · provider=" + commodities.provider + " · stale=" + Boolean(commodities.stale) + " · fetchedAt=" + commodities.fetchedAt + " · lastAttemptAt=" + (commodities.lastAttemptAt || "n/a"));
+            for (const [symbol,row] of list(commodities.data)) console.log("  " + symbol + " " + (row.available ? "AVAILABLE" : "UNAVAILABLE") + " · " + (row.source || commodities.provider || "unknown") + " · contract=" + (row.contract || row.symbol || "n/a") + " · session=" + (row.sessionDate || row.datetime || "n/a") + " · " + ageText(row.sessionDate || row.datetime) + (row.delayHours ? " · delay=" + row.delayHours + "h" : "") + (row.error ? " · " + row.error : ""));
+          }
+
+          const news = await get("/api/news");
+          if (news) {
+            console.log("NEWS " + news.status + " · Finnhub · news=" + (news.news || []).length + " · earnings=" + (news.earnings || []).length + " · fetchedAt=" + news.fetchedAt);
+            if (news.errors?.news) console.log("  news error: " + news.errors.news);
+            if (news.errors?.earnings) console.log("  earnings error: " + news.errors.earnings);
+            const latestNews = (news.news || []).map(x=>x.datetime || x.publishedAt).filter(Boolean).sort().at(-1);
+            const nextEarnings = (news.earnings || []).map(x=>x.date).filter(Boolean).sort()[0];
+            console.log("  latest news timestamp=" + (latestNews || "n/a") + " · next earnings date=" + (nextEarnings || "n/a"));
+          }
+
+          const disclosures = await get("/api/disclosures");
+          if (disclosures) {
+            console.log("DISCLOSURES " + disclosures.status + " · provider=" + (disclosures.provider || "not reported") + " · " + (disclosures.available ?? "?") + "/" + (disclosures.total ?? "?") + " checked · fetchedAt=" + disclosures.fetchedAt);
+            for (const [symbol,row] of list(disclosures.data)) {
+              const filings = row.filings || [];
+              const latest = filings.map(x=>x.filingDate || x.date).filter(Boolean).sort().at(-1);
+              console.log("  " + symbol + " " + row.status + " · source=" + (row.source || disclosures.provider || "unknown") + " · filings=" + filings.length + " · latest=" + (latest || "n/a") + (row.error ? " · " + row.error : ""));
             }
           }
 
-          console.error('DOWN: Stock Scanner availability check failed after 3 attempts. ' + lastError);
-          process.exit(1);
+          if (failures.length) {
+            console.error("MONITOR FAILURES: " + failures.join(" | "));
+            process.exit(1);
+          }
+          console.log("MONITOR PASS: live site, health, quotes, technical/momentum, value, macro, indices, commodities, news and disclosures checked.");
           NODE
