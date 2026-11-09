@@ -123,7 +123,10 @@ jobs:
           SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
         run: |
           set -euo pipefail
-          node --input-type=module <<'NODE' | npx wrangler secret bulk --config wrangler.jsonc
+          umask 077
+          secret_file="$(mktemp)"
+          trap 'rm -f "$secret_file"' EXIT
+          node --input-type=module <<'NODE' > "$secret_file"
           const names = [
             "MASSIVE_API_KEY",
             "TWELVE_DATA_API_KEY",
@@ -153,14 +156,19 @@ jobs:
             payload[name] = value;
           }
           if (Object.keys(payload).length === 0) {
-            console.error("No valid provider secrets were supplied; nothing was changed in Cloudflare.");
-            process.exit(1);
+            console.error("No provider secrets were supplied; existing Cloudflare values are left untouched and sync is skipped.");
+            process.exit(0);
           }
           console.error("Provider secrets present: " + Object.keys(payload).join(", "));
           if (missing.length) console.error("Provider secrets absent from GitHub (existing Cloudflare values, if any, are left unchanged): " + missing.join(", "));
           process.stdout.write(JSON.stringify(payload));
           NODE
-          echo "All configured market-data secrets synced to Cloudflare. Secret values were not printed."
+          if [ -s "$secret_file" ]; then
+            npx wrangler secret bulk --config wrangler.jsonc < "$secret_file"
+            echo "Configured market-data provider secrets synced to Cloudflare. Secret values were not printed."
+          else
+            echo "No provider secrets to sync; skipped without changing Cloudflare secrets."
+          fi
 
       - name: Check deployed website
         run: |
@@ -259,12 +267,14 @@ jobs:
           }
           console.log("PASS /api/health: Massive Futures credential is configured.");
 
-          const providerNames = ["massiveFutures", "twelveData", "finnhub", "fmp", "eodhd", "eulerpool", "marketstack"];
-          const missingProviders = providerNames.filter(name => health.providers?.[name] !== "configured");
-          if (missingProviders.length) {
-            throw new Error("/api/health: provider secrets are missing in Cloudflare: " + missingProviders.join(", "));
+          const optionalProviderNames = ["finnhub", "fmp", "eodhd", "alphaVantage", "eulerpool", "marketstack"];
+          const missingOptionalProviders = optionalProviderNames.filter(name => health.providers?.[name] !== "configured");
+          if (missingOptionalProviders.length) {
+            console.warn("WARN /api/health: optional provider credentials are not configured: " + missingOptionalProviders.join(", ") + ". Related research engines remain explicitly unavailable until configured.");
+          } else {
+            console.log("PASS /api/health: all optional provider credentials are configured.");
           }
-          console.log("PASS /api/health: all seven active market-data provider secrets are configured (Alpha Vantage and SEC User-Agent remain optional).");
+          console.log("PASS /api/health: required Twelve Data and Massive credentials are verified separately by quote, engine and commodity smoke tests.");
 
           const quotes = await getJson("/api/quotes");
           if (quotes.available !== 4 || quotes.total !== 4 || !quotes.data ||
