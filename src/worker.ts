@@ -1,5 +1,5 @@
 import { analyzeTechnical } from './marketAnalysis.js';
-import { summarizeStatus } from './engineStatus.js';
+import { summarizeStatus, technicalMomentumRowStatus } from './engineStatus.js';
 import { analyzeMomentum } from './researchEngines.js';
 import { assessLongSetup } from './signalEngine.js';
 import { ASSET_UNIVERSE, MAX_TRACKED_ASSETS, DYNAMIC_WATCH_SLOTS, CURRENTLY_CONNECTED_SYMBOLS } from './assetUniverse.js';
@@ -187,6 +187,7 @@ export default {
       if (cached) return cached;
       try {
         const entries = await Promise.all(symbols.map(async symbol => {
+          try {
           const upstream = new URL("https://api.twelvedata.com/time_series");
           upstream.searchParams.set("symbol", symbol);
           upstream.searchParams.set("interval", "1day");
@@ -211,6 +212,7 @@ export default {
           const support = lookback.length ? Math.min(...lookback.map(c => c.low)) : null;
           const momentumMetrics = analyzeMomentum(candles);
           return [symbol, {
+            status: technicalMomentumRowStatus(technical.status, momentumMetrics.status),
             source: "Twelve Data", interval: "1day", delayedOrLive: "לפי זמינות ומגבלות תוכנית הספק",
             candles: candles.length, asOf: technical.asOf, lastPrice: latest?.close ?? null,
             technical: { ...technical, support20: support, resistance20: resistance },
@@ -221,6 +223,9 @@ export default {
               suggestedQuantity: setup.suggestedQuantity, reasons: setup.reasons
             }
           }] as const;
+          } catch (error) {
+            return [symbol, { status: "UNAVAILABLE", source: "Twelve Data", error: error instanceof Error ? error.message : "שגיאה בקבלת נתוני הניתוח" }] as const;
+          }
         }));
         const data = Object.fromEntries(entries);
         const rows = Object.values(data);
@@ -739,7 +744,7 @@ export default {
       return Response.json(
         {
           status: "ok",
-          version: "2026-11-08-multi-provider-engines",
+          version: "2026-11-09-engine-status-coverage",
           assets: "bound",
           providers: {
             massiveFutures: env.MASSIVE_API_KEY?.trim() ? "configured" : "missing-key",

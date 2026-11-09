@@ -6,7 +6,7 @@ const compile=spawnSync('npx',['tsc','src/researchEngines.ts','src/engineStatus.
 if(compile.status!==0){process.stderr.write(compile.stdout+compile.stderr);process.exit(compile.status??1);}
 try{
  const {analyzeMomentum}=await import(new URL('../'+out+'/researchEngines.js',import.meta.url));
- const {summarizeStatus,statusForTechnicalData,statusForMacroSeries,statusForValueData,statusForCommodityData,statusForIndicesPayload,statusForQuotesPayload,statusForNewsPayload,statusForDisclosureData}=await import(new URL('../'+out+'/engineStatus.js',import.meta.url));
+ const {summarizeStatus,statusForTechnicalData,statusForMacroSeries,statusForValueData,statusForCommodityData,statusForIndicesPayload,statusForQuotesPayload,statusForNewsPayload,statusForDisclosureData,technicalMomentumRowStatus}=await import(new URL('../'+out+'/engineStatus.js',import.meta.url));
  const candles=Array.from({length:25},(_,i)=>({time:new Date(Date.UTC(2026,0,i+1)).toISOString(),open:100+i,high:102+i,low:99+i,close:101+i,volume:1000}));
  candles[candles.length-1]={...candles[candles.length-1],open:129,high:131,low:128,close:130};
  const result=analyzeMomentum(candles);
@@ -17,6 +17,9 @@ try{
  assert.equal(summarizeStatus(4,4,4),'READY');
  assert.equal(summarizeStatus(1,4,2),'PARTIAL');
  assert.equal(summarizeStatus(0,4,0),'UNAVAILABLE');
+ assert.equal(technicalMomentumRowStatus('READY','READY'),'READY');
+ assert.equal(technicalMomentumRowStatus('READY','INSUFFICIENT_DATA'),'PARTIAL');
+ assert.equal(technicalMomentumRowStatus(undefined,undefined),'UNAVAILABLE');
  const mixed={AAPL:{technical:{status:'READY'},momentum:{status:'READY'}},MSFT:{technical:{status:'READY'},momentum:{status:'INSUFFICIENT_DATA'}}};
  assert.equal(statusForTechnicalData(mixed,'technical'),'READY');
  assert.equal(statusForTechnicalData(mixed,'momentum'),'PARTIAL');

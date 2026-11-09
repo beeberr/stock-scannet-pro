@@ -43,3 +43,8 @@ export function statusForDisclosureData(data:Record<string,any>):DataAvailabilit
 export function statusLabel(s:EngineAvailability):string{
  return s==='LOADING'?'בבדיקה':s==='READY'?'READY · מלא':s==='PARTIAL'?'PARTIAL · חלקי':'UNAVAILABLE · לא זמין';
 }
+
+export function technicalMomentumRowStatus(technicalStatus?: string,momentumStatus?: string):DataAvailability {
+ if(!technicalStatus||!momentumStatus)return 'UNAVAILABLE';
+ return technicalStatus==='READY'&&momentumStatus==='READY'?'READY':'PARTIAL';
+}

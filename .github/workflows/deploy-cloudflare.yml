@@ -280,6 +280,8 @@ jobs:
           const engineRows = Object.values(engines.data);
           const ready = engineRows.filter(row => row.technical?.status === "READY" && row.momentum?.status === "READY").length;
           const observed = engineRows.filter(row => Boolean(row.technical && row.momentum)).length;
+          const invalidRowStatus = engineRows.some(row => row.status !== (row.technical && row.momentum ? (row.technical.status === "READY" && row.momentum.status === "READY" ? "READY" : "PARTIAL") : "UNAVAILABLE"));
+          if (invalidRowStatus) throw new Error("/api/engines: per-symbol status does not match technical/momentum result.");
           const expectedEngines = ready === engineRows.length ? "READY" : observed > 0 ? "PARTIAL" : "UNAVAILABLE";
           if (engines.status !== expectedEngines || engines.available !== ready || engines.total !== engineRows.length) throw new Error("/api/engines: aggregate status does not match row analysis.");
           console.log(`PASS /api/engines: ${engines.status} · ${engines.available}/${engines.total} fully analysed · Twelve Data.`);
