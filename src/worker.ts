@@ -337,7 +337,7 @@ export default {
       const series = Object.fromEntries(rows);
       const available = rows.filter(([, value]) => value.status === "READY").length;
       const observed = rows.filter(([, value]) => value.status !== "UNAVAILABLE").length;
-      const sources = [...new Set(rows.map(([, value]) => value.source || "FRED"))];
+      const sources = [...new Set(rows.map(([, value]) => (value as { source?: string }).source || "FRED"))];
       const response = Response.json({
         engine: "macro", status: summarizeStatus(available, definitions.length, observed),
         source: sources.join(" + "), fetchedAt: new Date().toISOString(), available, observed,
@@ -991,8 +991,6 @@ export default {
         fetchedAt: new Date().toISOString(),
         source: sources.length === 1 ? sources[0] : sources.join(" + ") || "Twelve Data/Alpha Vantage",
         providerConfigured: { twelveData: Boolean(twelveKey), alphaVantage: Boolean(alphaKey), marketstack: Boolean(marketstackKey) },
-        available,
-        total: symbols.length,
         note: "Twelve Data הוא המקור הראשי; Alpha Vantage משמש כגיבוי רק כאשר המקור הראשי נכשל. זמני המסחר, עיכובים ומכסות תלויים בתוכנית הספק."
       }, { headers: { "Cache-Control": "public, max-age=60, s-maxage=60" } });
       await edgeCache.put(cacheKey, response.clone());
