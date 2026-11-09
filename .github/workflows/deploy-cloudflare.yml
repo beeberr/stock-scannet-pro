@@ -215,17 +215,17 @@ jobs:
           const macroKeys = ["us_10y", "usd_broad", "crude_inventory", "wti_spot"];
           if (macro.engine !== "macro" || !["READY", "PARTIAL", "UNAVAILABLE"].includes(macro.status) || !macro.series || macroKeys.some(key => !macro.series[key] || macro.series[key].key !== key || !macro.series[key].status)) throw new Error("/api/macro: series/status fields are missing or malformed.");
           if (macro.total !== 4 || typeof macro.available !== "number" || typeof macro.observed !== "number") throw new Error("/api/macro: availability summary is malformed.");
-          const expected = macro.available === 4 ? "READY" : macro.observed > 0 ? "PARTIAL" : "UNAVAILABLE";
-          if (macro.status !== expected) throw new Error("/api/macro: aggregate status does not match observations.");
+          const expectedMacro = macro.available === 4 ? "READY" : macro.observed > 0 ? "PARTIAL" : "UNAVAILABLE";
+          if (macro.status !== expectedMacro) throw new Error("/api/macro: aggregate status does not match observations.");
           console.log(`PASS /api/macro: ${macro.status} · ${macro.available}/4 ready; ${macro.observed}/4 observed · ${macro.source}.`);
 
           const value = await getJson("/api/value");
           if (value.engine !== "value" || !["READY", "PARTIAL", "UNAVAILABLE"].includes(value.status) || !value.provider || !value.data || typeof value.available !== "number" || value.total !== 4) throw new Error("/api/value: provider status response is malformed.");
-          const rows = Object.values(value.data);
-          const successful = rows.filter(row => row.status === "READY").length;
-          const complete = rows.filter(row => row.status === "READY" && row.partial !== true).length;
-          const expected = complete === 4 ? "READY" : successful > 0 ? "PARTIAL" : "UNAVAILABLE";
-          if (value.status !== expected || value.available !== successful) throw new Error("/api/value: aggregate status does not match row coverage.");
+          const valueRows = Object.values(value.data);
+          const successful = valueRows.filter(row => row.status === "READY").length;
+          const complete = valueRows.filter(row => row.status === "READY" && row.partial !== true).length;
+          const expectedValue = complete === 4 ? "READY" : successful > 0 ? "PARTIAL" : "UNAVAILABLE";
+          if (value.status !== expectedValue || value.available !== successful) throw new Error("/api/value: aggregate status does not match row coverage.");
           console.log(`PASS /api/value: ${value.status} · ${value.available}/${value.total} symbols with data · ${value.provider}.`);
 
           const indices = await getJson("/api/indices");
@@ -271,17 +271,17 @@ jobs:
           const quotes = await getJson("/api/quotes");
           if (quotes.engine !== "quotes" || !["READY", "PARTIAL", "UNAVAILABLE"].includes(quotes.status) || !quotes.data || quotes.total !== 4 || typeof quotes.available !== "number") throw new Error("/api/quotes: status response is malformed.");
           const valid = Object.values(quotes.data).filter(q => q.status !== "UNAVAILABLE" && Number.isFinite(Number(q.close)) && Number(q.close) > 0).length;
-          const expected = valid === quotes.total ? "READY" : valid > 0 ? "PARTIAL" : "UNAVAILABLE";
-          if (quotes.status !== expected || quotes.available !== valid) throw new Error("/api/quotes: status does not match valid quote rows.");
+          const expectedQuotes = valid === quotes.total ? "READY" : valid > 0 ? "PARTIAL" : "UNAVAILABLE";
+          if (quotes.status !== expectedQuotes || quotes.available !== valid) throw new Error("/api/quotes: status does not match valid quote rows.");
           console.log(`PASS /api/quotes: ${quotes.status} · ${quotes.available}/${quotes.total} valid quotes · ${quotes.source}.`);
 
           const engines = await getJson("/api/engines?symbols=AAPL,MSFT,NVDA,XLE");
           if (engines.engine !== "technical-momentum" || !["READY", "PARTIAL", "UNAVAILABLE"].includes(engines.status) || !engines.data || Object.keys(engines.data).length !== 4) throw new Error("/api/engines: status/payload is malformed.");
-          const rows = Object.values(engines.data);
-          const ready = rows.filter(row => row.technical?.status === "READY" && row.momentum?.status === "READY").length;
-          const observed = rows.filter(row => Boolean(row.technical && row.momentum)).length;
-          const expected = ready === rows.length ? "READY" : observed > 0 ? "PARTIAL" : "UNAVAILABLE";
-          if (engines.status !== expected || engines.available !== ready || engines.total !== rows.length) throw new Error("/api/engines: aggregate status does not match row analysis.");
+          const engineRows = Object.values(engines.data);
+          const ready = engineRows.filter(row => row.technical?.status === "READY" && row.momentum?.status === "READY").length;
+          const observed = engineRows.filter(row => Boolean(row.technical && row.momentum)).length;
+          const expectedEngines = ready === engineRows.length ? "READY" : observed > 0 ? "PARTIAL" : "UNAVAILABLE";
+          if (engines.status !== expectedEngines || engines.available !== ready || engines.total !== engineRows.length) throw new Error("/api/engines: aggregate status does not match row analysis.");
           console.log(`PASS /api/engines: ${engines.status} · ${engines.available}/${engines.total} fully analysed · Twelve Data.`);
 
 
