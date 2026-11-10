@@ -4,7 +4,7 @@
 
 | Stage | Previously approved image / direction | Status |
 |---:|---|---|
-| 1 | Pool formwork and reinforcement before concrete pour | Approved previously; file not verified |
+| 1 | Pool under construction at the formwork/reinforcement stage; user selected option 5 from the comparison set (preferred over option 1) | **User-approved visual choice**; exact source URL and image file still need recovery/verification |
 | 2 | Empty pool after plastering/leveling, before waterproofing/tiling | Approved previously; file not verified |
 | 3 | Tiled, empty pool after tiling | Approved previously; file not verified |
 | 4 | Professional laser measurement inside the pool | Approved previously; file not verified |
@@ -34,3 +34,9 @@ For each stage, update the row with the committed filename and GitHub URL only a
 - Visual target: a real pool construction site before the concrete pour, with visible formwork/shuttering and preferably reinforcement steel; it must clearly read as a pool under construction, not a finished pool or a generic building foundation.
 - Web candidate found for review: MKL Groundworks, Cotswold Swimming Pool — https://www.mklgroundworks.co.uk/portals/0/casestudies/cotswold%20swimming%20pool/csp-9.jpg
 - This URL is a candidate reference only, not a locally stored or GitHub-committed image. Do not mark the image file as saved until actual bytes are committed and verified.
+
+
+## 2026-11-10 — Stage 1 image choice
+- User compared options 1 and 5 and explicitly chose **option 5** as the better image for stage 1.
+- Preserve option 5 as the approved visual choice; do not substitute option 1.
+- The exact source URL and binary image have not yet been recovered from the prior image result. This is a recorded approval, **not** proof that the image file is archived in GitHub.
