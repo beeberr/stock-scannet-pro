@@ -5,9 +5,10 @@ export function summarizeStatus(ready:number,total:number,observed=ready):DataAv
  if(ready>=total)return 'READY';
  return 'PARTIAL';
 }
-export function statusForTechnicalData(data:Record<string,any>,engine:'technical'|'momentum'):DataAvailability{
+export function statusForTechnicalData(data:Record<string,any>,engine:'technical'|'momentum',stale=false):DataAvailability{
  const rows=Object.values(data||{}),observed=rows.filter((r:any)=>r?.[engine]&&typeof r[engine]==='object').length,ready=rows.filter((r:any)=>r?.[engine]?.status==='READY').length;
- return summarizeStatus(ready,rows.length,observed);
+ const status=summarizeStatus(ready,rows.length,observed);
+ return stale&&observed>0?'PARTIAL':status;
 }
 export function statusForMacroSeries(series:Record<string,any>,coverageComplete=false):DataAvailability{
  const rows=Object.values(series||{}),observed=rows.filter((r:any)=>r?.latest!==null&&r?.latest!==undefined).length,ready=rows.filter((r:any)=>r?.status==='READY').length;
