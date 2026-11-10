@@ -9,9 +9,10 @@ export function statusForTechnicalData(data:Record<string,any>,engine:'technical
  const rows=Object.values(data||{}),observed=rows.filter((r:any)=>r?.[engine]&&typeof r[engine]==='object').length,ready=rows.filter((r:any)=>r?.[engine]?.status==='READY').length;
  return summarizeStatus(ready,rows.length,observed);
 }
-export function statusForMacroSeries(series:Record<string,any>):DataAvailability{
+export function statusForMacroSeries(series:Record<string,any>,coverageComplete=false):DataAvailability{
  const rows=Object.values(series||{}),observed=rows.filter((r:any)=>r?.latest!==null&&r?.latest!==undefined).length,ready=rows.filter((r:any)=>r?.status==='READY').length;
- return summarizeStatus(ready,rows.length,observed);
+ const seriesStatus=summarizeStatus(ready,rows.length,observed);
+ return !coverageComplete&&observed>0?'PARTIAL':seriesStatus;
 }
 export function statusForValueData(data:Record<string,any>):DataAvailability{
  const rows=Object.values(data||{}),observed=rows.filter((r:any)=>r?.status==='READY').length,ready=rows.filter((r:any)=>r?.status==='READY'&&r?.partial!==true&&Boolean(r?.valuation||r?.latestFinancials)).length;
@@ -36,9 +37,10 @@ export function statusForNewsPayload(p:Record<string,any>):DataAvailability{
  const ok=['news','earnings'].filter(k=>errors[k]===null||errors[k]===undefined).length;
  return summarizeStatus(ok,2,ok);
 }
-export function statusForDisclosureData(data:Record<string,any>):DataAvailability{
+export function statusForDisclosureData(data:Record<string,any>,coverageComplete=false):DataAvailability{
  const rows=Object.values(data||{}),checked=rows.filter((r:any)=>r?.status==='READY'||r?.status==='NO_RECENT_MATCHES').length;
- return summarizeStatus(checked,rows.length,checked);
+ const filingsStatus=summarizeStatus(checked,rows.length,checked);
+ return !coverageComplete&&checked>0?'PARTIAL':filingsStatus;
 }
 export function statusLabel(s:EngineAvailability):string{
  return s==='LOADING'?'בבדיקה':s==='READY'?'READY · מלא':s==='PARTIAL'?'PARTIAL · חלקי':'UNAVAILABLE · לא זמין';
