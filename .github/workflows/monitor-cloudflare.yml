@@ -44,7 +44,7 @@ jobs:
           const isoTime = value => {
             const ms = timestampMs(value);
             return ms === null ? "n/a" : new Date(ms).toISOString();
-          };
+          };;
           async function get(path) {
             const start = Date.now();
             const response = await fetch(new URL(path, base), {
