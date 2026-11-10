@@ -95,7 +95,9 @@ jobs:
 
           const engines = await get("/api/engines?symbols=AAPL,MSFT,NVDA,XLE");
           if (engines) {
-            console.log("TECHNICAL " + engines.status + " · " + engines.available + "/" + engines.total + " complete · Twelve Data · fetchedAt=" + engines.fetchedAt);
+            console.log("TECHNICAL " + engines.status + " · " + engines.available + "/" + engines.total + " complete · Twelve Data · stale=" + Boolean(engines.stale) + " · fetchedAt=" + engines.fetchedAt + (engines.staleReason ? " · staleReason=" + engines.staleReason : ""));
+            const expectedTechnical = engines.stale === true && engines.available > 0 ? "PARTIAL" : engines.available === engines.total ? "READY" : engines.available > 0 ? "PARTIAL" : "UNAVAILABLE";
+            if (engines.status !== expectedTechnical) failures.push("/api/engines aggregate status mismatch");
             for (const [symbol,row] of list(engines.data)) console.log("  " + symbol + " " + row.status + " · technical=" + row.technical?.status + " · momentum=" + row.momentum?.status + " · candles=" + (row.candles ?? 0) + " · " + (row.asOf || "n/a") + " · " + ageText(row.asOf) + (row.error ? " · " + row.error : ""));
           }
 
