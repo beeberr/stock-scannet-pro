@@ -15,3 +15,10 @@
 - User feels the proposed 18-page brochure is too long.
 - User's new layout direction: allocate space for both the image and its corresponding stage text, with half a page for the image and half a page for the section.
 - Exact pagination still needs clarification: if this means half a page of image plus half a page of text for each of the 17 stages, the document remains approximately 18 pages including the cover. Do not finalize pagination until the user confirms whether two stages should share each page, or whether they intended a different compact arrangement.
+
+
+## 2026-11-10 — Background-image layout clarification
+- User clarified that text may be placed directly over the image; the image should function as the background behind the text.
+- Goal: use the available page area efficiently rather than reserving separate half-page blocks for image and text.
+- Keep text readable over the photo using suitable contrast/overlay treatment; preserve the premium AGOR visual direction.
+- Since the user also said 18 pages is too many, final pagination (for example, two stages per page) remains to be confirmed before layout production.
