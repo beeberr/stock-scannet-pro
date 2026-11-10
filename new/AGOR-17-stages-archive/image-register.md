@@ -27,3 +27,10 @@ For each stage, update the row with the committed filename and GitHub URL only a
 1. The actual image bytes are saved in this repository.
 2. The file is committed on the intended branch.
 3. The file can be opened from its GitHub URL.
+
+
+## 2026-11-10 — Stage 1 visual confirmed
+- User reconfirmed that the image for stage 1 must show a swimming pool in the **formwork stage (תפסנות)**.
+- Visual target: a real pool construction site before the concrete pour, with visible formwork/shuttering and preferably reinforcement steel; it must clearly read as a pool under construction, not a finished pool or a generic building foundation.
+- Web candidate found for review: MKL Groundworks, Cotswold Swimming Pool — https://www.mklgroundworks.co.uk/portals/0/casestudies/cotswold%20swimming%20pool/csp-9.jpg
+- This URL is a candidate reference only, not a locally stored or GitHub-committed image. Do not mark the image file as saved until actual bytes are committed and verified.
