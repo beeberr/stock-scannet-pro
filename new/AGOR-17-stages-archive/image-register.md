@@ -5,7 +5,7 @@
 | Stage | Previously approved image / direction | Status |
 |---:|---|---|
 | 1 | Pool under construction at the formwork/reinforcement stage; user selected option 5 from the comparison set (preferred over option 1) | **User-approved visual choice**; exact source URL and image file still need recovery/verification |
-| 2 | Empty pool after plastering/leveling, before waterproofing/tiling | Approved previously; file not verified |
+| 2 | Professional project accompaniment: architect/project manager at a swimming-pool construction site reviewing plans and monitoring progress; user selected the **left image** from the two-image comparison | **User-approved visual choice**; exact image file/source URL still needs recovery/verification |
 | 3 | Tiled, empty pool after tiling | Approved previously; file not verified |
 | 4 | Professional laser measurement inside the pool | Approved previously; file not verified |
 | 5 | User selected an image; exact visual mapping is ambiguous in the reconstructed notes | Approval recorded; must recover exact image or clarify only this stage |
@@ -40,3 +40,9 @@ For each stage, update the row with the committed filename and GitHub URL only a
 - User compared options 1 and 5 and explicitly chose **option 5** as the better image for stage 1.
 - Preserve option 5 as the approved visual choice; do not substitute option 1.
 - The exact source URL and binary image have not yet been recovered from the prior image result. This is a recorded approval, **not** proof that the image file is archived in GitHub.
+
+
+## 2026-11-10 — Stage 2 image choice
+- User selected the **left image** from the two-image comparison for stage 2, “ליווי הפרויקט ברקע”.
+- Visual direction: professional project accompaniment at a pool construction site, reviewing plans/monitoring progress; not a generic construction photo.
+- The exact source URL and binary image are not yet archived. Do not claim the image file is stored until committed and opened from GitHub.
