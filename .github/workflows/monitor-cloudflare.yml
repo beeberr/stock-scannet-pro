@@ -28,13 +28,22 @@ jobs:
           node --input-type=module <<'NODE'
           const base = process.env.BASE_URL;
           const failures = [];
-          const ageHours = value => {
-            const ms = Date.parse(value || "");
-            return Number.isFinite(ms) ? Math.max(0, (Date.now() - ms) / 3600000) : null;
+          const timestampMs = value => {
+            if (typeof value === "number" && Number.isFinite(value)) return value < 1e12 ? value * 1000 : value;
+            const raw = String(value || "");
+            const ms = Date.parse(/^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw + "T00:00:00Z" : raw);
+            return Number.isFinite(ms) ? ms : null;
           };
           const ageText = value => {
-            const age = ageHours(value);
-            return age === null ? "age n/a" : "age " + age.toFixed(1) + "h";
+            const ms = timestampMs(value);
+            if (ms === null) return "age n/a";
+            const age = Math.max(0, Date.now() - ms);
+            if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) return "date-only " + value + " · " + (age / 86400000).toFixed(1) + " calendar days (time unavailable)";
+            return "age " + (age / 3600000).toFixed(1) + "h";
+          };
+          const isoTime = value => {
+            const ms = timestampMs(value);
+            return ms === null ? "n/a" : new Date(ms).toISOString();
           };
           async function get(path) {
             const start = Date.now();
@@ -93,24 +102,34 @@ jobs:
           const value = await get("/api/value");
           if (value) {
             console.log("VALUE " + value.status + " · " + value.available + "/" + value.total + " · provider route=" + value.provider + " · fetchedAt=" + value.fetchedAt);
-            for (const [symbol,row] of list(value.data)) console.log("  " + symbol + " " + row.status + " · source=" + (row.source || "unknown") + " · partial=" + Boolean(row.partial) + " · asOf=" + (row.asOf || row.latestFinancials?.date || "n/a") + (row.error ? " · " + row.error : ""));
+            for (const [symbol,row] of list(value.data)) {
+              const asOf = row.asOf || row.latestFinancials?.date || "n/a";
+              console.log("  " + symbol + " " + row.status + " · source=" + (row.source || "unknown") + " · partial=" + Boolean(row.partial) + " · asOf=" + asOf + " · " + ageText(asOf) + (row.error ? " · " + row.error : ""));
+            }
           }
 
           const macro = await get("/api/macro");
           if (macro) {
-            console.log("MACRO " + macro.status + " · " + macro.available + "/" + macro.total + " ready · " + macro.observed + " observed · sources=" + macro.source + " · fetchedAt=" + macro.fetchedAt);
-            for (const [key,row] of list(macro.series)) console.log("  " + key + " " + row.status + " · " + (row.source || "FRED") + " · asOf=" + (row.asOf || "n/a") + " · observations=" + (row.observations ?? 0) + (row.error ? " · " + row.error : ""));
+            console.log("MACRO engine=" + macro.status + " · historical series=" + (macro.seriesStatus || "not reported") + " · " + macro.available + "/" + macro.total + " ready · " + macro.observed + " observed · bank forecasts not connected · sources=" + macro.source + " · fetchedAt=" + macro.fetchedAt);
+            const expectedSeriesStatus = macro.available === macro.total ? "READY" : macro.observed > 0 ? "PARTIAL" : "UNAVAILABLE";
+            const expectedEngineStatus = macro.observed > 0 ? "PARTIAL" : "UNAVAILABLE";
+            if (macro.seriesStatus !== expectedSeriesStatus || macro.status !== expectedEngineStatus) failures.push("/api/macro engine/series coverage status mismatch");
+            for (const [key,row] of list(macro.series)) console.log("  " + key + " " + row.status + " · " + (row.source || "FRED") + " · asOf=" + (row.asOf || "n/a") + " · " + ageText(row.asOf) + " · observations=" + (row.observations ?? 0) + (row.error ? " · " + row.error : ""));
           }
 
           const indices = await get("/api/indices");
           if (indices) {
             console.log("INDICES " + indices.status + " · " + indices.available + "/" + indices.total + " · providers=" + indices.provider + " · fetchedAt=" + indices.fetchedAt);
+            const expectedIndices = indices.available === indices.total ? "READY" : indices.available > 0 ? "PARTIAL" : "UNAVAILABLE";
+            if (indices.status !== expectedIndices) failures.push("/api/indices aggregate status mismatch");
             for (const [symbol,row] of list(indices.data)) console.log("  " + symbol + " " + row.status + " · " + (row.source || "unknown") + " · asOf=" + (row.asOf || "n/a") + " · " + ageText(row.asOf) + (row.error ? " · " + row.error : ""));
           }
 
           const commodities = await get("/api/commodities");
           if (commodities) {
             console.log("COMMODITIES " + commodities.status + " · " + commodities.available + "/" + commodities.total + " · provider=" + commodities.provider + " · stale=" + Boolean(commodities.stale) + " · fetchedAt=" + commodities.fetchedAt + " · lastAttemptAt=" + (commodities.lastAttemptAt || "n/a"));
+            const expectedCommodities = commodities.stale && commodities.available > 0 ? "PARTIAL" : commodities.available === commodities.total ? "READY" : commodities.available > 0 ? "PARTIAL" : "UNAVAILABLE";
+            if (commodities.status !== expectedCommodities) failures.push("/api/commodities aggregate status mismatch");
             for (const [symbol,row] of list(commodities.data)) console.log("  " + symbol + " " + (row.available ? "AVAILABLE" : "UNAVAILABLE") + " · " + (row.source || commodities.provider || "unknown") + " · contract=" + (row.contract || row.symbol || "n/a") + " · session=" + (row.sessionDate || row.datetime || "n/a") + " · " + ageText(row.sessionDate || row.datetime) + (row.delayHours ? " · delay=" + row.delayHours + "h" : "") + (row.error ? " · " + row.error : ""));
           }
 
@@ -119,18 +138,21 @@ jobs:
             console.log("NEWS " + news.status + " · Finnhub · news=" + (news.news || []).length + " · earnings=" + (news.earnings || []).length + " · fetchedAt=" + news.fetchedAt);
             if (news.errors?.news) console.log("  news error: " + news.errors.news);
             if (news.errors?.earnings) console.log("  earnings error: " + news.errors.earnings);
-            const latestNews = (news.news || []).map(x=>x.datetime || x.publishedAt).filter(Boolean).sort().at(-1);
+            const latestNews = (news.news || []).map(x=>x.datetime || x.publishedAt).filter(Boolean).sort((a,b)=>timestampMs(a)-timestampMs(b)).at(-1);
             const nextEarnings = (news.earnings || []).map(x=>x.date).filter(Boolean).sort()[0];
-            console.log("  latest news timestamp=" + (latestNews || "n/a") + " · next earnings date=" + (nextEarnings || "n/a"));
+            console.log("  latest news timestamp=" + isoTime(latestNews) + " · next earnings date=" + (nextEarnings || "n/a"));
           }
 
           const disclosures = await get("/api/disclosures");
           if (disclosures) {
-            console.log("DISCLOSURES " + disclosures.status + " · provider=" + (disclosures.provider || "not reported") + " · " + (disclosures.available ?? "?") + "/" + (disclosures.total ?? "?") + " checked · fetchedAt=" + disclosures.fetchedAt);
+            console.log("DISCLOSURES engine=" + disclosures.status + " · company filings=" + (disclosures.filingsStatus || "not reported") + " · provider=" + (disclosures.provider || "not reported") + " · " + (disclosures.available ?? "?") + "/" + (disclosures.total ?? "?") + " checked · STOCK Act coverage not connected · fetchedAt=" + disclosures.fetchedAt);
+            const expectedFilings = disclosures.available === disclosures.total ? "READY" : disclosures.available > 0 ? "PARTIAL" : "UNAVAILABLE";
+            const expectedDisclosureEngine = disclosures.available > 0 ? "PARTIAL" : "UNAVAILABLE";
+            if (disclosures.filingsStatus !== expectedFilings || disclosures.status !== expectedDisclosureEngine) failures.push("/api/disclosures engine/filings coverage status mismatch");
             for (const [symbol,row] of list(disclosures.data)) {
               const filings = row.filings || [];
-              const latest = filings.map(x=>x.filingDate || x.date).filter(Boolean).sort().at(-1);
-              console.log("  " + symbol + " " + row.status + " · source=" + (row.source || disclosures.provider || "unknown") + " · filings=" + filings.length + " · latest=" + (latest || "n/a") + (row.error ? " · " + row.error : ""));
+              const latest = filings.map(x=>x.filingDate || x.filedDate || x.acceptedDate || x.date || x.filing_date).filter(Boolean).map(String).sort().at(-1);
+              console.log("  " + symbol + " " + row.status + " · source=" + (row.source || disclosures.provider || "unknown") + " · filings=" + filings.length + " · latest=" + (latest || "n/a") + (latest ? " · " + ageText(latest) : "") + (row.error ? " · " + row.error : ""));
             }
           }
 
