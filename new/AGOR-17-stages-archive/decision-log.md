@@ -22,3 +22,11 @@
 - Goal: use the available page area efficiently rather than reserving separate half-page blocks for image and text.
 - Keep text readable over the photo using suitable contrast/overlay treatment; preserve the premium AGOR visual direction.
 - Since the user also said 18 pages is too many, final pagination (for example, two stages per page) remains to be confirmed before layout production.
+
+
+## 2026-11-10 — Confirmed pagination
+- User explicitly approved the layout of **two stages per page**.
+- Each page will contain **two images and two corresponding stage sections** (one image and one section for each stage).
+- Text may be overlaid directly on its image; the image serves as the background so the page area is used efficiently.
+- Use readable text treatment (contrast/overlay) so the wording remains clear without obscuring important visual details.
+- With 17 stages, the content is planned as 8 pages with two stages each, plus 1 final page for the remaining stage, unless a later design decision groups the last stage differently. Cover page is additional. Preserve all 17 stages in exact order; do not merge or omit any stage.
