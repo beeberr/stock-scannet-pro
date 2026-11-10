@@ -24,6 +24,9 @@ try{
  assert.equal(statusForTechnicalData(mixed,'technical'),'READY');
  assert.equal(statusForTechnicalData(mixed,'momentum'),'PARTIAL');
  assert.equal(statusForMacroSeries({a:{status:'READY',latest:10},b:{status:'UNAVAILABLE',latest:null}}),'PARTIAL');
+ const completeMacroSeries={a:{status:'READY',latest:10},b:{status:'READY',latest:20}};
+ assert.equal(statusForMacroSeries(completeMacroSeries),'PARTIAL');
+ assert.equal(statusForMacroSeries(completeMacroSeries,true),'READY');
  assert.equal(statusForValueData({AAPL:{status:'READY',partial:false,valuation:{pe:20}},MSFT:{status:'UNAVAILABLE'}}),'PARTIAL');
  assert.equal(statusForValueData({AAPL:{status:'READY',partial:true,valuation:{pe:20}}}),'PARTIAL');
  const full={GC:{available:true,research:{technical:{status:'READY'},momentum:{status:'READY'}}},CL:{available:true,research:{technical:{status:'READY'},momentum:{status:'READY'}}}};
@@ -33,7 +36,9 @@ try{
  assert.equal(statusForIndicesPayload({total:2,data:{SPY:{status:'READY'},QQQ:{status:'UNAVAILABLE'}}}),'PARTIAL');
  assert.equal(statusForQuotesPayload({available:0,total:4}),'UNAVAILABLE');
  assert.equal(statusForNewsPayload({status:'READY',errors:{news:null,earnings:'timeout'}}),'PARTIAL');
- assert.equal(statusForDisclosureData({AAPL:{status:'NO_RECENT_MATCHES'},MSFT:{status:'READY'}}),'READY');
+ const completeDisclosureRows={AAPL:{status:'NO_RECENT_MATCHES'},MSFT:{status:'READY'}};
+ assert.equal(statusForDisclosureData(completeDisclosureRows),'PARTIAL');
+ assert.equal(statusForDisclosureData(completeDisclosureRows,true),'READY');
  assert.equal(statusForDisclosureData({AAPL:{status:'READY'},MSFT:{status:'UNAVAILABLE'}}),'PARTIAL');
  console.log('PASS: eight-engine READY/PARTIAL/UNAVAILABLE classification, including stale and partial data');
 }finally{rmSync(out,{recursive:true,force:true});}
