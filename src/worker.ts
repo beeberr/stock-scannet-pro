@@ -181,7 +181,9 @@ export default {
       if (!symbols.length || symbols.length > 4 || symbols.some(symbol => !ALLOWED_SYMBOLS.has(symbol))) {
         return Response.json({ error: "ניתן לנתח עד ארבעה סימולים מחוברים: AAPL, MSFT, NVDA, XLE." }, { status: 400 });
       }
-      const cacheKey = new Request(new URL("/api/engines?provider=twelvedata-v2-status&symbols=" + symbols.slice().sort().join(","), url.origin), { method: "GET" });
+      const symbolKey = symbols.slice().sort().join(",");
+      const cacheKey = new Request(new URL("/api/engines?provider=twelvedata-v3-status&symbols=" + symbolKey, url.origin), { method: "GET" });
+      const staleCacheKey = new Request(new URL("/api/engines?provider=twelvedata-stale-v1&symbols=" + symbolKey, url.origin), { method: "GET" });
       const edgeCache = (globalThis as unknown as { caches: { default: Cache } }).caches.default;
       const cached = await edgeCache.match(cacheKey);
       if (cached) return cached;
@@ -231,17 +233,49 @@ export default {
         const rows = Object.values(data);
         const available = rows.filter((row: any) => row.technical?.status === "READY" && row.momentum?.status === "READY").length;
         const observed = rows.filter((row: any) => Boolean(row.technical && row.momentum)).length;
-        const body = Response.json({
-          engine: "technical-momentum", status: summarizeStatus(available, symbols.length, observed), available, total: symbols.length,
-          fetchedAt: new Date().toISOString(), source: "Twelve Data",
+        const fetchedAt = new Date().toISOString();
+        const providerErrors = rows.filter((row: any) => row.status === "UNAVAILABLE").map((row: any) => row.error).filter(Boolean);
+        if (observed === 0) {
+          const staleResponse = await edgeCache.match(staleCacheKey);
+          if (staleResponse) {
+            try {
+              const previous = await staleResponse.json() as Record<string, any>;
+              const staleData = previous.data && typeof previous.data === "object" ? previous.data : {};
+              const staleAvailable = Object.values(staleData).filter((row: any) => row?.technical?.status === "READY" && row?.momentum?.status === "READY").length;
+              if (staleAvailable > 0) {
+                const stalePayload = {
+                  ...previous, status: "PARTIAL", stale: true,
+                  staleReason: providerErrors.join("; ") || "Twelve Data לא החזיר נתונים חדשים.",
+                  lastAttemptAt: fetchedAt, available: staleAvailable, total: symbols.length,
+                  note: "מוצגים נתוני ניתוח אחרונים שנשמרו בהצלחה. הם אינם נתונים טריים; יש לבדוק את תאריך asOf לפני שימוש."
+                };
+                const staleBody = Response.json(stalePayload, { headers: { "Cache-Control": "public, max-age=60, s-maxage=60" } });
+                await edgeCache.put(cacheKey, staleBody.clone());
+                return staleBody;
+              }
+            } catch {
+              // Ignore an invalid stale snapshot and return the current provider failure below.
+            }
+          }
+        }
+        const status = summarizeStatus(available, symbols.length, observed);
+        const payload = {
+          engine: "technical-momentum", status, available, total: symbols.length,
+          fetchedAt, lastAttemptAt: fetchedAt, stale: false, source: "Twelve Data",
           activeEngines: ["technical", "momentum"],
           integratedEngines: ["value", "indices-sectors", "news-events", "public-disclosures"],
           partialEngines: ["macro", "gold-oil"],
           plannedEngines: ["bank-forecast-consensus", "commodity-supply-demand", "political-disclosures"],
           data,
           note: "ניתוח טכני ומומנטום מחושבים מנרות יומיים שהתקבלו מהספק. תוצאות הן מחקריות בלבד, אינן תחזית או הוראת מסחר."
-        }, { headers: { "Cache-Control": "public, max-age=900, s-maxage=900" } });
+        };
+        const cacheSeconds = available === symbols.length ? 900 : 30;
+        const body = Response.json(payload, { headers: { "Cache-Control": "public, max-age=" + cacheSeconds + ", s-maxage=" + cacheSeconds } });
         await edgeCache.put(cacheKey, body.clone());
+        if (available === symbols.length) {
+          const staleSnapshot = Response.json(payload, { headers: { "Cache-Control": "public, max-age=172800, s-maxage=172800" } });
+          await edgeCache.put(staleCacheKey, staleSnapshot);
+        }
         return body;
       } catch (error) {
         return Response.json({ error: error instanceof Error ? error.message : "שגיאה באיסוף נתוני ניתוח", source: "Twelve Data" }, { status: 502, headers: { "Cache-Control": "no-store" } });
@@ -748,7 +782,7 @@ export default {
       return Response.json(
         {
           status: "ok",
-          version: "2026-11-10-engine-coverage-partial-status",
+          version: "2026-11-10-engine-coverage-stale-technical",
           assets: "bound",
           providers: {
             massiveFutures: env.MASSIVE_API_KEY?.trim() ? "configured" : "missing-key",
