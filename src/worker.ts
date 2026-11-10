@@ -343,12 +343,14 @@ export default {
       const available = rows.filter(([, value]) => value.status === "READY").length;
       const observed = rows.filter(([, value]) => value.status !== "UNAVAILABLE").length;
       const sources = [...new Set(rows.map(([, value]) => (value as { source?: string }).source || "FRED"))];
+      const seriesStatus = summarizeStatus(available, definitions.length, observed);
+      const status = observed > 0 ? "PARTIAL" : "UNAVAILABLE";
       const response = Response.json({
-        engine: "macro", status: summarizeStatus(available, definitions.length, observed),
+        engine: "macro", status, seriesStatus,
         source: sources.join(" + "), fetchedAt: new Date().toISOString(), available, observed,
         total: definitions.length,
         series,
-        note: "כל סדרה נשלפת ומטופלת בנפרד. כשל בסדרה אחת אינו מונע הצגת סדרות אחרות. ההשוואה היא לתצפית לפני כ-20 פרסומים; תדירות הסדרות שונה."
+        note: "הסטטוס הכללי נשאר PARTIAL עד לחיבור תחזיות קונצנזוס של בנקים; seriesStatus מתאר רק את ארבע הסדרות ההיסטוריות. כל סדרה נשלפת בנפרד, וההשוואה היא לתצפית לפני כ-20 פרסומים."
       }, {
         headers: { "Cache-Control": "public, max-age=600, s-maxage=600" }
       });
@@ -583,9 +585,10 @@ export default {
           const available = entries.filter(([, row]) => row.status !== "UNAVAILABLE").length;
           return Response.json({
             engine: "public-disclosures",
-            status: summarizeStatus(available, symbols.length, available), available, total: symbols.length,
+            status: available > 0 ? "PARTIAL" : "UNAVAILABLE",
+            filingsStatus: summarizeStatus(available, symbols.length, available), available, total: symbols.length,
             provider: "Finnhub filings", providerConfigured: true, fetchedAt: new Date().toISOString(), data,
-            note: "מוצגים דיווחי חברות כפי שסופקו על ידי Finnhub. לחיבור ישיר למקור SEC EDGAR יש להגדיר SEC_USER_AGENT תקין. אין כאן גילויי עסקאות של נבחרי ציבור."
+            note: "מוצגים דיווחי חברות כפי שסופקו על ידי Finnhub. הסטטוס הכללי PARTIAL עד לחיבור SEC EDGAR ישיר וגילויי עסקאות של נבחרי ציבור לפי STOCK Act."
           }, { headers: { "Cache-Control": "public, max-age=1800, s-maxage=1800" } });
         }
         return Response.json({
@@ -637,9 +640,10 @@ export default {
         const available = entries.filter(([, row]) => row.status !== "UNAVAILABLE").length;
         const response = Response.json({
           engine: "public-disclosures",
-          status: summarizeStatus(available, symbols.length, available), available, total: symbols.length,
+          status: available > 0 ? "PARTIAL" : "UNAVAILABLE",
+          filingsStatus: summarizeStatus(available, symbols.length, available), available, total: symbols.length,
           provider: "SEC EDGAR", providerConfigured: true, fetchedAt: new Date().toISOString(), data,
-          note: "SEC EDGAR מכסה דיווחי חברות ובעלי עניין כגון Form 4; הוא אינו מאגר גילויי עסקאות של נבחרי ציבור לפי STOCK Act."
+          note: "SEC EDGAR מכסה דיווחי חברות ובעלי עניין כגון Form 4; הסטטוס הכללי PARTIAL עד לחיבור גילויי עסקאות של נבחרי ציבור לפי STOCK Act."
         }, { headers: { "Cache-Control": "public, max-age=1800, s-maxage=1800" } });
         await edgeCache.put(cacheKey, response.clone());
         return response;
@@ -744,7 +748,7 @@ export default {
       return Response.json(
         {
           status: "ok",
-          version: "2026-11-09-engine-status-coverage",
+          version: "2026-11-10-engine-coverage-partial-status",
           assets: "bound",
           providers: {
             massiveFutures: env.MASSIVE_API_KEY?.trim() ? "configured" : "missing-key",
