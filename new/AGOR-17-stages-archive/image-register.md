@@ -5,7 +5,7 @@
 | Stage | Previously approved image / direction | Status |
 |---:|---|---|
 | 1 | Pool under construction at the formwork/reinforcement stage; user selected option 5 from the comparison set (preferred over option 1) | **User-approved visual choice**; exact source URL and image file still need recovery/verification |
-| 2 | Professional project accompaniment: architect/project manager at a swimming-pool construction site reviewing plans and monitoring progress; user selected the **left image** from the two-image comparison | **User-approved visual choice**; exact image file/source URL still needs recovery/verification |
+| 2 | Empty concrete swimming pool after plastering and leveling, before waterproofing and tiling | **Corrected by user on 2026-11-10; previous left-image selection cancelled. New image not yet selected.** |
 | 3 | Professional at a construction site with plans, checking his wristwatch; user selected the **bottom image (option 3)** from the comparison | **User-approved visual choice**; exact source URL and binary image still need recovery/verification |
 | 4 | Professional laser measurement inside the pool | Approved previously; file not verified |
 | 5 | User selected an image; exact visual mapping is ambiguous in the reconstructed notes | Approval recorded; must recover exact image or clarify only this stage |
@@ -58,3 +58,11 @@ For each stage, update the row with the committed filename and GitHub URL only a
 - User selected the **bottom image (option 3)** from the three options for stage 3.
 - Preserve this exact selection: a professional at a construction site with plans, checking his wristwatch; it communicates schedule and waiting time.
 - The image result reference was `turn517078image8`; its original source URL and binary are not yet archived in the repository. Do not claim the image file is saved until committed and opened from GitHub.
+
+
+## 2026-11-10 — Stage 2 image correction
+- User explicitly cancelled the previous selection of the left image for stage 2; it was the wrong image.
+- Correct visual requirement: an empty swimming pool in the **plaster/render stage**, after plastering and leveling, before waterproofing and before tiling/cladding.
+- Find a real pool image that clearly shows the plastered pool interior; do not use a generic construction-site/project-manager image.
+- New candidate for review: https://homemaking.com.au/images/concrete_pool1.png — empty grey concrete pool shell with smooth finished interior; check carefully that its visible perimeter tile detail does not misrepresent the requested pre-waterproofing/pre-tiling stage.
+- No new image has been approved yet; candidate URL is not a committed image file.
