@@ -6,7 +6,7 @@
 |---:|---|---|
 | 1 | Pool under construction at the formwork/reinforcement stage; user selected option 5 from the comparison set (preferred over option 1) | **User-approved visual choice**; exact source URL and image file still need recovery/verification |
 | 2 | Professional project accompaniment: architect/project manager at a swimming-pool construction site reviewing plans and monitoring progress; user selected the **left image** from the two-image comparison | **User-approved visual choice**; exact image file/source URL still needs recovery/verification |
-| 3 | Professional man at a construction site, looking at his wristwatch; visual metaphor for schedule and waiting time | **Direction specified by user; image not yet selected** |
+| 3 | Professional at a construction site with plans, checking his wristwatch; user selected the **bottom image (option 3)** from the comparison | **User-approved visual choice**; exact source URL and binary image still need recovery/verification |
 | 4 | Professional laser measurement inside the pool | Approved previously; file not verified |
 | 5 | User selected an image; exact visual mapping is ambiguous in the reconstructed notes | Approval recorded; must recover exact image or clarify only this stage |
 | 6 | Generic image representing the waiting period | User accepted generic image; file not verified |
@@ -52,3 +52,9 @@ For each stage, update the row with the committed filename and GitHub URL only a
 - User specified a man standing against the background of a construction site and looking at his wristwatch.
 - The image should communicate schedule/time and waiting, with a professional site-management feel rather than a generic laborer-at-work image.
 - Image options surfaced for review include a suited engineer in a yellow hard hat checking his watch at a construction site (Getty/iStock image result) and other construction-site watch-checking images. No specific image has been approved yet.
+
+
+## 2026-11-10 — Stage 3 image choice
+- User selected the **bottom image (option 3)** from the three options for stage 3.
+- Preserve this exact selection: a professional at a construction site with plans, checking his wristwatch; it communicates schedule and waiting time.
+- The image result reference was `turn517078image8`; its original source URL and binary are not yet archived in the repository. Do not claim the image file is saved until committed and opened from GitHub.
