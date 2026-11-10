@@ -213,11 +213,12 @@ jobs:
 
           const macro = await getJson("/api/macro");
           const macroKeys = ["us_10y", "usd_broad", "crude_inventory", "wti_spot"];
-          if (macro.engine !== "macro" || !["READY", "PARTIAL", "UNAVAILABLE"].includes(macro.status) || !macro.series || macroKeys.some(key => !macro.series[key] || macro.series[key].key !== key || !macro.series[key].status)) throw new Error("/api/macro: series/status fields are missing or malformed.");
+          if (macro.engine !== "macro" || !["READY", "PARTIAL", "UNAVAILABLE"].includes(macro.status) || !["READY", "PARTIAL", "UNAVAILABLE"].includes(macro.seriesStatus) || !macro.series || macroKeys.some(key => !macro.series[key] || macro.series[key].key !== key || !macro.series[key].status)) throw new Error("/api/macro: series/status fields are missing or malformed.");
           if (macro.total !== 4 || typeof macro.available !== "number" || typeof macro.observed !== "number") throw new Error("/api/macro: availability summary is malformed.");
-          const expectedMacro = macro.available === 4 ? "READY" : macro.observed > 0 ? "PARTIAL" : "UNAVAILABLE";
-          if (macro.status !== expectedMacro) throw new Error("/api/macro: aggregate status does not match observations.");
-          console.log(`PASS /api/macro: ${macro.status} · ${macro.available}/4 ready; ${macro.observed}/4 observed · ${macro.source}.`);
+          const expectedMacroSeries = macro.available === 4 ? "READY" : macro.observed > 0 ? "PARTIAL" : "UNAVAILABLE";
+          const expectedMacro = macro.observed > 0 ? "PARTIAL" : "UNAVAILABLE";
+          if (macro.seriesStatus !== expectedMacroSeries || macro.status !== expectedMacro) throw new Error("/api/macro: engine/series coverage status does not match available data and missing bank forecasts.");
+          console.log(`PASS /api/macro: engine ${macro.status}; historical series ${macro.seriesStatus} · ${macro.available}/4 ready; ${macro.observed}/4 observed · ${macro.source}.`);
 
           const value = await getJson("/api/value");
           if (value.engine !== "value" || !["READY", "PARTIAL", "UNAVAILABLE"].includes(value.status) || !value.provider || !value.data || typeof value.available !== "number" || value.total !== 4) throw new Error("/api/value: provider status response is malformed.");
@@ -242,10 +243,15 @@ jobs:
           console.log(`PASS /api/news: Finnhub endpoint responds with explicit status (${news.status}).`);
 
           const disclosures = await getJson("/api/disclosures");
-          if (disclosures.engine !== "public-disclosures" || !["READY", "PARTIAL", "UNAVAILABLE"].includes(disclosures.status) || !disclosures.provider) {
+          if (disclosures.engine !== "public-disclosures" || !["READY", "PARTIAL", "UNAVAILABLE"].includes(disclosures.status) || !["READY", "PARTIAL", "UNAVAILABLE"].includes(disclosures.filingsStatus) || !disclosures.provider || !disclosures.data || typeof disclosures.available !== "number" || typeof disclosures.total !== "number") {
             throw new Error("/api/disclosures: SEC/Finnhub response is malformed.");
           }
-          console.log(`PASS /api/disclosures: official/fallback filings endpoint responds with explicit status (${disclosures.status}).`);
+          const expectedFilings = disclosures.available === disclosures.total ? "READY" : disclosures.available > 0 ? "PARTIAL" : "UNAVAILABLE";
+          const expectedDisclosureEngine = disclosures.available > 0 ? "PARTIAL" : "UNAVAILABLE";
+          if (disclosures.filingsStatus !== expectedFilings || disclosures.status !== expectedDisclosureEngine) {
+            throw new Error("/api/disclosures: company-filing availability or overall STOCK Act coverage status is inconsistent.");
+          }
+          console.log(`PASS /api/disclosures: engine ${disclosures.status}; company filings ${disclosures.filingsStatus} · ${disclosures.available}/${disclosures.total} checked.`);
 
           const universe = await getJson("/api/universe");
           if (universe.configuredCount !== 45 || universe.maximum !== 50 || universe.dynamicSlots !== 5 || !Array.isArray(universe.assets) || universe.assets.length !== 45) {
