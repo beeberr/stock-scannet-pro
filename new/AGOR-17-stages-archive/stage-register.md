@@ -4,7 +4,7 @@ The following is a structured record of the original Hebrew stage descriptions p
 
 1. **פגישה ראשונה לפני יציקת הבריכה** — At the end of formwork for pool walls, invite AGOR to participate in pouring one wall adjacent to the machine room, including hydraulic pipes and grounding rod. Follow AGOR instructions for machine room and preparations for air, electrical, control, water, pool basin and surroundings. Verify actions before pouring.
 2. **ליווי הפרויקט ברקע** — AGOR remains involved through shell and finish stages, coordinating with supervision and architect. Initial measurement after pool plaster to verify match between order and actual pool.
-3. **סיום ריצוף וחיפוי – מדידה סופית** — After interior pool tiling and external flooring around pool (which moving floor must align with at upper position), final measurement can be done.
+3. **סיום ריצוף וחיפוי – מדידה סופית** — After interior pool tiling and external flooring around pool (which moving floor must align with at upper position), final measurement can be done. **User instruction for the brochure: explicitly state that the production time for the hydraulic floor is approximately six months.** This is a user-provided schedule clarification for the stage 3 section; reconcile the six-month overall production lead time with the source document's separate stage durations (including stage 6's 3–4 months) before final publication, rather than silently presenting them as competing standalone durations.
 4. **מדידת הבריכה והכנת תיק ייצור** — AGOR measures pool and prepares production file. Approx. 6 weeks.
 5. **אישור תכנית סופית** — Final plan sent for approval before production. Customer or representative/professionals must sign.
 6. **ייצור** — Production, approx. 3–4 months.
