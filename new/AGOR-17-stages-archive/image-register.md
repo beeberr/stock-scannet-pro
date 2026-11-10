@@ -6,7 +6,7 @@
 |---:|---|---|
 | 1 | Pool under construction at the formwork/reinforcement stage; user selected option 5 from the comparison set (preferred over option 1) | **User-approved visual choice**; exact source URL and image file still need recovery/verification |
 | 2 | Professional project accompaniment: architect/project manager at a swimming-pool construction site reviewing plans and monitoring progress; user selected the **left image** from the two-image comparison | **User-approved visual choice**; exact image file/source URL still needs recovery/verification |
-| 3 | Tiled, empty pool after tiling | Approved previously; file not verified |
+| 3 | Professional man at a construction site, looking at his wristwatch; visual metaphor for schedule and waiting time | **Direction specified by user; image not yet selected** |
 | 4 | Professional laser measurement inside the pool | Approved previously; file not verified |
 | 5 | User selected an image; exact visual mapping is ambiguous in the reconstructed notes | Approval recorded; must recover exact image or clarify only this stage |
 | 6 | Generic image representing the waiting period | User accepted generic image; file not verified |
@@ -46,3 +46,9 @@ For each stage, update the row with the committed filename and GitHub URL only a
 - User selected the **left image** from the two-image comparison for stage 2, “ליווי הפרויקט ברקע”.
 - Visual direction: professional project accompaniment at a pool construction site, reviewing plans/monitoring progress; not a generic construction photo.
 - The exact source URL and binary image are not yet archived. Do not claim the image file is stored until committed and opened from GitHub.
+
+
+## 2026-11-10 — Stage 3 image direction
+- User specified a man standing against the background of a construction site and looking at his wristwatch.
+- The image should communicate schedule/time and waiting, with a professional site-management feel rather than a generic laborer-at-work image.
+- Image options surfaced for review include a suited engineer in a yellow hard hat checking his watch at a construction site (Getty/iStock image result) and other construction-site watch-checking images. No specific image has been approved yet.
