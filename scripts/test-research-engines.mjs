@@ -22,7 +22,9 @@ try{
  assert.equal(technicalMomentumRowStatus(undefined,undefined),'UNAVAILABLE');
  const mixed={AAPL:{technical:{status:'READY'},momentum:{status:'READY'}},MSFT:{technical:{status:'READY'},momentum:{status:'INSUFFICIENT_DATA'}}};
  assert.equal(statusForTechnicalData(mixed,'technical'),'READY');
+ assert.equal(statusForTechnicalData(mixed,'technical',true),'PARTIAL');
  assert.equal(statusForTechnicalData(mixed,'momentum'),'PARTIAL');
+ assert.equal(statusForTechnicalData({},'technical',true),'UNAVAILABLE');
  assert.equal(statusForMacroSeries({a:{status:'READY',latest:10},b:{status:'UNAVAILABLE',latest:null}}),'PARTIAL');
  const completeMacroSeries={a:{status:'READY',latest:10},b:{status:'READY',latest:20}};
  assert.equal(statusForMacroSeries(completeMacroSeries),'PARTIAL');
