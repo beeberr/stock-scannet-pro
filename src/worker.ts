@@ -252,7 +252,7 @@ export default {
     if (url.pathname === "/api/macro") {
       if (request.method !== "GET") return Response.json({ error: "Method not allowed." }, { status: 405 });
       // Versioned key deliberately bypasses any cached all-or-nothing FRED response.
-      const cacheKey = new Request(new URL("/api/macro?provider=fred-v3-status", url.origin), { method: "GET" });
+      const cacheKey = new Request(new URL("/api/macro?provider=fred-v4-coverage", url.origin), { method: "GET" });
       const edgeCache = (globalThis as unknown as { caches: { default: Cache } }).caches.default;
       const cached = await edgeCache.match(cacheKey);
       if (cached) return cached;
@@ -597,7 +597,7 @@ export default {
           error: "חסר SEC_USER_AGENT וגם לא הוגדר מפתח Finnhub לשימוש כחלופה."
         }, { headers: { "Cache-Control": "no-store" } });
       }
-      const cacheKey = new Request(new URL("/api/disclosures?provider=sec-edgar-v2-status&symbols=" + symbols.slice().sort().join(","), url.origin), { method: "GET" });
+      const cacheKey = new Request(new URL("/api/disclosures?provider=sec-edgar-v3-coverage&symbols=" + symbols.slice().sort().join(","), url.origin), { method: "GET" });
       const edgeCache = (globalThis as unknown as { caches: { default: Cache } }).caches.default;
       const cached = await edgeCache.match(cacheKey);
       if (cached) return cached;
