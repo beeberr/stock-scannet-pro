@@ -11,7 +11,7 @@ Configure these GitHub repository secrets:
 - `DSA_AUTH_COOKIE`: optional authenticated session cookie if the DSA deployment has `ADMIN_AUTH_ENABLED=true`. Leave unset when DSA authentication is disabled.
 - `EXTERNAL_ENGINE_ACCESS_KEY`: a long random shared key required by the Stock ScanNet Pro external-engine panel.
 
-After adding or changing these secrets, trigger the deployment secret-sync workflow by pushing a commit whose message contains `[sync-secrets]`. The workflow syncs only non-empty values and does not delete existing Cloudflare secrets when a GitHub secret is absent.
+After adding or changing these secrets, run the `Deploy Stock Scanner to Cloudflare` workflow manually with `workflow_dispatch`, or push a commit whose message contains `[sync-secrets]`. The workflow deploys the current `main` branch and syncs only non-empty values; it does not delete existing Cloudflare secrets when a GitHub secret is absent.
 
 ## Service requirements
 
