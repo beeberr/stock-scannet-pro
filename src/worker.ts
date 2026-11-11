@@ -916,7 +916,10 @@ export default {
             alphaVantage: env.ALPHA_VANTAGE_API_KEY?.trim() ? "configured" : "missing-key",
             eulerpool: env.EULERPOOL_API_KEY?.trim() ? "configured" : "missing-key",
             marketstack: env.MARKETSTACK_API_KEY?.trim() ? "configured" : "missing-key",
-            secEdgar: env.SEC_USER_AGENT?.trim() ? "configured" : "missing-user-agent"
+            secEdgar: env.SEC_USER_AGENT?.trim() ? "configured" : "missing-user-agent",
+            alphaSift: env.ALPHASIFT_BASE_URL?.trim() ? "configured" : "missing-url",
+            dailyStockAnalysis: env.DSA_BASE_URL?.trim() ? "configured" : "missing-url",
+            externalEngineAccess: env.EXTERNAL_ENGINE_ACCESS_KEY?.trim() ? "configured" : "missing-key"
           },
           providerSemantics: "configured means a non-empty Worker secret binding only; upstream credentials are verified only by successful provider data responses."
         },
