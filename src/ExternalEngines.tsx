@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 
 type EngineStatus = {
   fetchedAt?: string;
@@ -53,7 +53,7 @@ export default function ExternalEngines() {
     } finally { setBusy(false); }
   }
 
-  async function startDsaAnalysis(event: React.FormEvent) {
+  async function startDsaAnalysis(event: FormEvent) {
     event.preventDefault();
     if (!accessKey.trim()) { setMessage("נדרש מפתח גישה."); return; }
     setBusy(true); setDsaResult(null); setTaskId(""); setMessage("שולח בקשת ניתוח ל-DSA…");
