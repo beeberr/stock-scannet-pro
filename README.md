@@ -43,6 +43,10 @@ Massive Futures Basic returns historical session bars with an approximately eigh
 7. News, earnings and event analysis.
 8. Verified public disclosures, SEC filings and public-official transaction reports.
 
+## External AI engine integration
+
+The external-engines workspace adds a secured Cloudflare Worker proxy for AlphaSift's read-only overview/strategy/run endpoints and asynchronous single-stock analysis through Daily Stock Analysis (DSA). It does not replace the eight native engines or connect a broker. Configure the HTTPS service URLs and shared access key as GitHub/Cloudflare secrets before use. AlphaSift's official `serve` API is read-only; remote screening execution still requires a separate runner endpoint. See [external engine integration setup](docs/external-engine-integration.md).
+
 ## Safety and measurement
 A monthly doubling target is tracked only as an aspiration, never represented as a realistic or guaranteed return. Signals must be timestamped, source-attributed, testable, and evaluated including fees, spreads, slippage and financing. Public-official and insider transactions are displayed only when supported by official disclosures; filing dates and transaction dates must be kept separate.
 
