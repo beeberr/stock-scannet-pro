@@ -122,6 +122,10 @@ jobs:
           EULERPOOL_API_KEY: ${{ secrets.EULERPOOL_API_KEY }}
           MARKETSTACK_API_KEY: ${{ secrets.MARKETSTACK_API_KEY }}
           SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+          ALPHASIFT_BASE_URL: ${{ secrets.ALPHASIFT_BASE_URL }}
+          DSA_BASE_URL: ${{ secrets.DSA_BASE_URL }}
+          DSA_AUTH_COOKIE: ${{ secrets.DSA_AUTH_COOKIE }}
+          EXTERNAL_ENGINE_ACCESS_KEY: ${{ secrets.EXTERNAL_ENGINE_ACCESS_KEY }}
         run: |
           set -euo pipefail
           node --input-type=module <<'NODE' | npx wrangler secret bulk --config wrangler.jsonc
@@ -134,7 +138,11 @@ jobs:
             "ALPHA_VANTAGE_API_KEY",
             "EULERPOOL_API_KEY",
             "MARKETSTACK_API_KEY",
-            "SEC_USER_AGENT"
+            "SEC_USER_AGENT",
+            "ALPHASIFT_BASE_URL",
+            "DSA_BASE_URL",
+            "DSA_AUTH_COOKIE",
+            "EXTERNAL_ENGINE_ACCESS_KEY"
           ];
           const payload = {};
           const missing = [];
