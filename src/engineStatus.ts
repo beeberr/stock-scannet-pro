@@ -51,3 +51,17 @@ export function technicalMomentumRowStatus(technicalStatus?: string,momentumStat
  if(!technicalStatus||!momentumStatus)return 'UNAVAILABLE';
  return technicalStatus==='READY'&&momentumStatus==='READY'?'READY':'PARTIAL';
 }
+
+
+export function financialStatementFreshness(
+ asOf:string|null|undefined,
+ now=Date.now(),
+ maxAgeDays=120
+):{stale:boolean;ageDays:number|null}{
+ const timestamp=typeof asOf==='string'?Date.parse(asOf):NaN;
+ if(!Number.isFinite(timestamp)||!Number.isFinite(now)||!Number.isFinite(maxAgeDays)||maxAgeDays<0){
+  return {stale:true,ageDays:null};
+ }
+ const ageDays=Math.max(0,(now-timestamp)/86400000);
+ return {stale:ageDays>maxAgeDays,ageDays:Math.floor(ageDays)};
+}

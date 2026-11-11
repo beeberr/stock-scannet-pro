@@ -104,9 +104,18 @@ jobs:
           const value = await get("/api/value");
           if (value) {
             console.log("VALUE " + value.status + " · " + value.available + "/" + value.total + " · provider route=" + value.provider + " · fetchedAt=" + value.fetchedAt);
-            for (const [symbol,row] of list(value.data)) {
+            const valueRows = list(value.data);
+            const valueAvailable = valueRows.filter(([,row]) => row.status === "READY").length;
+            const valueComplete = valueRows.filter(([,row]) => row.status === "READY" && row.partial !== true).length;
+            const expectedValueStatus = valueComplete === value.total ? "READY" : valueAvailable > 0 ? "PARTIAL" : "UNAVAILABLE";
+            if (value.status !== expectedValueStatus || value.available !== valueAvailable) failures.push("/api/value aggregate status mismatch");
+            for (const [symbol,row] of valueRows) {
               const asOf = row.asOf || row.latestFinancials?.date || "n/a";
-              console.log("  " + symbol + " " + row.status + " · source=" + (row.source || "unknown") + " · partial=" + Boolean(row.partial) + " · asOf=" + asOf + " · " + ageText(asOf) + (row.error ? " · " + row.error : ""));
+              const asOfMs = timestampMs(asOf);
+              const ageDays = asOfMs === null ? null : Math.floor(Math.max(0, Date.now() - asOfMs) / 86400000);
+              const stale = ageDays === null || ageDays > 120;
+              if (stale && row.status === "READY" && row.partial !== true) failures.push("/api/value " + symbol + " stale financial data not marked partial");
+              console.log("  " + symbol + " " + row.status + " · source=" + (row.source || "unknown") + " · partial=" + Boolean(row.partial) + " · stale=" + stale + " · " + ageText(asOf) + (row.partialReason ? " · " + row.partialReason : "") + (row.error ? " · " + row.error : ""));
             }
           }
 

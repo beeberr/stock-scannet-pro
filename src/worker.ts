@@ -1,5 +1,5 @@
 import { analyzeTechnical } from './marketAnalysis.js';
-import { summarizeStatus, technicalMomentumRowStatus } from './engineStatus.js';
+import { summarizeStatus, technicalMomentumRowStatus, financialStatementFreshness } from './engineStatus.js';
 import { analyzeMomentum } from './researchEngines.js';
 import { assessLongSetup } from './signalEngine.js';
 import { ASSET_UNIVERSE, MAX_TRACKED_ASSETS, DYNAMIC_WATCH_SLOTS, CURRENTLY_CONNECTED_SYMBOLS } from './assetUniverse.js';
@@ -404,7 +404,7 @@ export default {
       if (!symbols.length || symbols.length > 8 || symbols.some(symbol => !equitySymbols.has(symbol))) {
         return Response.json({ error: "ניתן לבקש עד שמונה מניות מתוך מאגר המניות." }, { status: 400 });
       }
-      const cacheKey = new Request(new URL("/api/value?provider=fmp-stable-v2-status&symbols=" + symbols.slice().sort().join(","), url.origin), { method: "GET" });
+      const cacheKey = new Request(new URL("/api/value?provider=fmp-stable-v3-quarter-freshness&symbols=" + symbols.slice().sort().join(","), url.origin), { method: "GET" });
       const edgeCache = (globalThis as unknown as { caches: { default: Cache } }).caches.default;
       const cached = await edgeCache.match(cacheKey);
       if (cached) return cached;
@@ -495,15 +495,26 @@ export default {
           };
           const [ratiosResult, statementsResult] = await Promise.allSettled([
             fetchFmp("ratios-ttm"),
-            fetchFmp("income-statement?limit=5")
+            fetchFmp("income-statement?period=quarter&limit=5")
           ]);
           const ratios = ratiosResult.status === "fulfilled" ? ratiosResult.value : null;
           const statement = statementsResult.status === "fulfilled" ? statementsResult.value : null;
           if (!ratios && !statement && (eodhdKey || eulerpoolKey)) return [symbol, await fetchBestAvailableFallback(symbol)] as const;
           const status = ratios || statement ? "READY" : "UNAVAILABLE";
+          const asOf = String(statement?.date || ratios?.date || "");
+          const freshness = financialStatementFreshness(asOf);
+          const missingCoreData = !ratios || !statement;
+          const partial = missingCoreData || freshness.stale;
+          const partialReason = freshness.stale
+            ? freshness.ageDays === null
+              ? "תאריך הדוח הפיננסי חסר או אינו תקין."
+              : `הדוח הפיננסי האחרון בן ${freshness.ageDays} ימים (סף רעננות: 120 ימים).`
+            : missingCoreData
+              ? "חסרים יחסי TTM או דוח רווח והפסד רבעוני."
+              : null;
           return [symbol, {
             symbol, status, source: "FMP",
-            asOf: String(ratios?.date || statement?.date || ""),
+            asOf,
             valuation: ratios ? {
               pe: ratios.priceToEarningsRatioTTM ?? null,
               priceToBook: ratios.priceToBookRatioTTM ?? null,
@@ -517,7 +528,7 @@ export default {
               netIncome: statement.netIncome ?? null, operatingIncome: statement.operatingIncome ?? null,
               eps: statement.eps ?? null
             } : null,
-            partial: !ratios || !statement,
+            partial, stale: freshness.stale, ageDays: freshness.ageDays, partialReason,
             error: !ratios && !statement ? [
               ratiosResult.status === "rejected" ? String(ratiosResult.reason) : "",
               statementsResult.status === "rejected" ? String(statementsResult.reason) : ""

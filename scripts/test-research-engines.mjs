@@ -6,7 +6,7 @@ const compile=spawnSync('npx',['tsc','src/researchEngines.ts','src/engineStatus.
 if(compile.status!==0){process.stderr.write(compile.stdout+compile.stderr);process.exit(compile.status??1);}
 try{
  const {analyzeMomentum}=await import(new URL('../'+out+'/researchEngines.js',import.meta.url));
- const {summarizeStatus,statusForTechnicalData,statusForMacroSeries,statusForValueData,statusForCommodityData,statusForIndicesPayload,statusForQuotesPayload,statusForNewsPayload,statusForDisclosureData,technicalMomentumRowStatus}=await import(new URL('../'+out+'/engineStatus.js',import.meta.url));
+ const {summarizeStatus,statusForTechnicalData,statusForMacroSeries,statusForValueData,statusForCommodityData,statusForIndicesPayload,statusForQuotesPayload,statusForNewsPayload,statusForDisclosureData,technicalMomentumRowStatus,financialStatementFreshness}=await import(new URL('../'+out+'/engineStatus.js',import.meta.url));
  const candles=Array.from({length:25},(_,i)=>({time:new Date(Date.UTC(2026,0,i+1)).toISOString(),open:100+i,high:102+i,low:99+i,close:101+i,volume:1000}));
  candles[candles.length-1]={...candles[candles.length-1],open:129,high:131,low:128,close:130};
  const result=analyzeMomentum(candles);
@@ -31,6 +31,11 @@ try{
  assert.equal(statusForMacroSeries(completeMacroSeries,true),'READY');
  assert.equal(statusForValueData({AAPL:{status:'READY',partial:false,valuation:{pe:20}},MSFT:{status:'UNAVAILABLE'}}),'PARTIAL');
  assert.equal(statusForValueData({AAPL:{status:'READY',partial:true,valuation:{pe:20}}}),'PARTIAL');
+ const fixedNow=Date.parse('2026-11-11T00:00:00.000Z');
+ assert.deepEqual(financialStatementFreshness('2026-09-30',fixedNow),{stale:false,ageDays:42});
+ assert.deepEqual(financialStatementFreshness('2026-01-25',fixedNow),{stale:true,ageDays:290});
+ assert.deepEqual(financialStatementFreshness('',fixedNow),{stale:true,ageDays:null});
+ assert.equal(statusForValueData({NVDA:{status:'READY',partial:financialStatementFreshness('2026-01-25',fixedNow).stale,valuation:{pe:20},latestFinancials:{date:'2026-01-25'}}}),'PARTIAL');
  const full={GC:{available:true,research:{technical:{status:'READY'},momentum:{status:'READY'}}},CL:{available:true,research:{technical:{status:'READY'},momentum:{status:'READY'}}}};
  assert.equal(statusForCommodityData(full),'READY');
  assert.equal(statusForCommodityData(full,true),'PARTIAL');
