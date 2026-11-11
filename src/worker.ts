@@ -793,7 +793,7 @@ export default {
       return Response.json(
         {
           status: "ok",
-          version: "2026-11-10-engine-coverage-stale-technical",
+          version: "2026-11-11-quarterly-value-freshness",
           assets: "bound",
           providers: {
             massiveFutures: env.MASSIVE_API_KEY?.trim() ? "configured" : "missing-key",
