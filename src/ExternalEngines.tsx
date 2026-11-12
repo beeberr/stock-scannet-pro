@@ -8,7 +8,6 @@ type AlphaSummary = {
   latest?: Record<string, Array<Record<string, unknown>>>;
   [key: string]: unknown;
 };
-
 type DsaManifest = {
   schema_version?: number;
   engine?: string;
@@ -20,28 +19,22 @@ type DsaManifest = {
   artifact_name?: string;
   run_url?: string;
 };
-
 const ALPHA_SUMMARY_URL = "/api/external/alphasift/latest";
 const DSA_LATEST_URL = "/api/external/dsa/latest";
 const ALPHA_ACTIONS_URL = "https://github.com/beeberr/alphasift/actions/workflows/track-record.yml";
 const DSA_ACTIONS_URL = "https://github.com/beeberr/daily_stock_analysis/actions/workflows/00-daily-analysis.yml";
-
 async function readJson<T>(path: string): Promise<T> {
   const response = await fetch(path, { headers: { Accept: "application/json" }, cache: "no-store" });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error((payload as { error?: string }).error || `שגיאת HTTP ${response.status}`);
   return payload as T;
 }
-
 function formatDate(value?: string) {
   if (!value) return "לא פורסם עדיין";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString("he-IL");
 }
-
-function pretty(value: unknown) {
-  return JSON.stringify(value, null, 2);
-}
+function pretty(value: unknown) { return JSON.stringify(value, null, 2); }
 
 export default function ExternalEngines() {
   const [alpha, setAlpha] = useState<AlphaSummary | null>(null);
@@ -50,67 +43,51 @@ export default function ExternalEngines() {
   const [dsaError, setDsaError] = useState("");
   const [busy, setBusy] = useState(false);
   const [updatedAt, setUpdatedAt] = useState("");
-
   const refresh = useCallback(async () => {
-    setBusy(true);
-    setAlphaError("");
-    setDsaError("");
-    const [a, d] = await Promise.allSettled([
-      readJson<AlphaSummary>(ALPHA_SUMMARY_URL),
-      readJson<DsaManifest>(DSA_LATEST_URL)
-    ]);
+    setBusy(true); setAlphaError(""); setDsaError("");
+    const [a, d] = await Promise.allSettled([readJson<AlphaSummary>(ALPHA_SUMMARY_URL), readJson<DsaManifest>(DSA_LATEST_URL)]);
     if (a.status === "fulfilled") setAlpha(a.value);
     else setAlphaError(a.reason instanceof Error ? a.reason.message : "לא ניתן לטעון נתוני AlphaSift.");
     if (d.status === "fulfilled") setDsa(d.value);
     else setDsaError(d.reason instanceof Error ? d.reason.message : "לא ניתן לטעון דוחות DSA.");
-    setUpdatedAt(new Date().toISOString());
-    setBusy(false);
+    setUpdatedAt(new Date().toISOString()); setBusy(false);
   }, []);
-
   useEffect(() => { void refresh(); }, [refresh]);
-
-  return <section>
-    <div className="sect">
-      <div>
-        <h2>מנועי ניתוח · GitHub Actions</h2>
-        <p>AlphaSift לסריקה ודירוג · Daily Stock Analysis לניתוח עומק</p>
-      </div>
-      <button type="button" className="primary" disabled={busy} onClick={() => void refresh()}>{busy ? "מרענן…" : "רענן תוצאות"}</button>
-    </div>
-
-    <div className="alert">
-      מנועי הניתוח רצים ב-GitHub Actions ואינם תלויים בשרת Render. האתר מציג את התוצאות האחרונות שפורסמו; אין כאן תהליך שרץ ברציפות או מסחר אוטומטי.
-    </div>
-
-    <div className="engines">
-      <article>
-        <div className="engine-head"><b>AlphaSift</b><span className="tag">{alpha ? "תוצאות זמינות" : alphaError ? "לא זמין" : "טוען…"}</span></div>
-        <p>סריקות אסטרטגיות ותוצאות היסטוריות. ברירת המחדל של הפרויקט מתמקדת בעיקר בשווקים באסיה; יש לבדוק את השוק והאסטרטגיה בכל תוצאה.</p>
-        {alphaError ? <small>{alphaError}</small> : alpha && <>
-          <p><b>עודכן:</b> {formatDate(alpha.generated_at)}</p>
-          <p><b>מספר ריצות שנשמרו:</b> {alpha.run_count ?? "—"}</p>
-          <p><b>שווקים:</b> {Array.isArray(alpha.markets) ? alpha.markets.map(market => typeof market === "string" ? market : market.name || market.id || "שוק").join(", ") : "—"}</p>
-          <details><summary>הצג נתוני סריקה מלאים</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere",maxHeight:360,overflow:"auto"}}>{pretty(alpha)}</pre></details>
-        </>}
-        <a className="link" href={ALPHA_ACTIONS_URL} target="_blank" rel="noreferrer">פתיחת AlphaSift ב-GitHub Actions להרצה ידנית</a>
+  return <div className="external-engines">
+    <section id="alphasift" className="engine-feature alpha-feature">
+      <div className="sect"><div><h2>AlphaSift · מנוע סריקה ודירוג</h2><p>סריקות אסטרטגיות, דירוג מניות ותוצאות שמפורסמות מ-GitHub Actions</p></div><button type="button" className="primary" disabled={busy} onClick={() => void refresh()}>{busy ? "מרענן…" : "רענן תוצאות"}</button></div>
+      <div className="alert">המנוע מציג את התוצאות האחרונות שפורסמו. ברירת המחדל של הפרויקט מתמקדת בעיקר בשווקים באסיה; יש לבדוק את השוק והאסטרטגיה בכל תוצאה.</div>
+      <article className="engine-detail">
+        <div className="engine-head"><b>מצב AlphaSift</b><span className={`engine-status ${alpha ? "ready" : alphaError ? "unavailable" : "loading"}`}>{alpha ? "תוצאות זמינות" : alphaError ? "לא זמין" : "טוען…"}</span></div>
+        {alphaError ? <p className="engine-error">{alphaError}</p> : alpha ? <>
+          <div className="engine-metrics">
+            <div><small>עודכן לאחרונה</small><strong>{formatDate(alpha.generated_at)}</strong></div>
+            <div><small>ריצות שנשמרו</small><strong>{alpha.run_count ?? "—"}</strong></div>
+            <div><small>שווקים</small><strong>{Array.isArray(alpha.markets) ? alpha.markets.map(m => typeof m === "string" ? m : m.name || m.id || "שוק").join(", ") : "—"}</strong></div>
+          </div>
+          <details className="engine-data"><summary>פתח נתוני סריקה מלאים</summary><pre>{pretty(alpha)}</pre></details>
+        </> : <p>ממתין לפרסום התוצאות הראשונות מענף track-record של AlphaSift.</p>}
+        <a className="engine-action" href={ALPHA_ACTIONS_URL} target="_blank" rel="noreferrer">פתח את AlphaSift ב-GitHub Actions להרצה ידנית</a>
       </article>
-
-      <article>
-        <div className="engine-head"><b>Daily Stock Analysis</b><span className="tag">{dsa ? "תוצאות פורסמו" : dsaError ? "ממתין לריצה ראשונה" : "טוען…"}</span></div>
-        <p>דוחות ניתוח שמופקים בריצות GitHub Actions. לאחר כל ריצה מוצלחת או כושלת מתעדכן קובץ מצב, והדוחות נשמרים בענף תוצאות נפרד.</p>
-        {dsaError ? <small>{dsaError}</small> : dsa && <>
-          <p><b>עודכן:</b> {formatDate(dsa.updated_at)}</p>
-          <p><b>מצב הריצה האחרונה:</b> {dsa.status || "לא ידוע"}</p>
-          <p><b>מספר ריצה:</b> {dsa.run_number || "—"}</p>
-          <p><b>מספר דוחות שנוצרו:</b> {dsa.report_count ?? "—"}</p>
-          {dsa.run_url ? <p><a className="link" href={dsa.run_url} target="_blank" rel="noreferrer">פתיחת ריצת GitHub Actions והורדת הדוח ({dsa.artifact_name || "analysis artifact"})</a></p> : <small>עדיין לא פורסמה ריצה. הפעל ריצה ראשונה ב-GitHub Actions.</small>}
-          <details><summary>הצג נתוני פרסום</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere",maxHeight:300,overflow:"auto"}}>{pretty(dsa)}</pre></details>
-        </>}
-        <a className="link" href={DSA_ACTIONS_URL} target="_blank" rel="noreferrer">פתיחת DSA ב-GitHub Actions להרצה ידנית</a>
+    </section>
+    <section id="dsa" className="engine-feature dsa-feature">
+      <div className="sect"><div><h2>Daily Stock Analysis · מנוע ניתוח עומק</h2><p>ניתוח מפורט ודוחות מניות שמופקים בריצות GitHub Actions</p></div><button type="button" className="primary" disabled={busy} onClick={() => void refresh()}>{busy ? "מרענן…" : "רענן תוצאות"}</button></div>
+      <article className="engine-detail">
+        <div className="engine-head"><b>מצב Daily Stock Analysis</b><span className={`engine-status ${dsa ? "ready" : dsaError ? "unavailable" : "loading"}`}>{dsa ? "תוצאות פורסמו" : dsaError ? "ממתין לריצה ראשונה" : "טוען…"}</span></div>
+        {dsaError ? <p className="engine-error">{dsaError}</p> : dsa ? <>
+          <div className="engine-metrics">
+            <div><small>עודכן לאחרונה</small><strong>{formatDate(dsa.updated_at)}</strong></div>
+            <div><small>מצב הריצה</small><strong>{dsa.status || "לא ידוע"}</strong></div>
+            <div><small>דוחות שנוצרו</small><strong>{dsa.report_count ?? "—"}</strong></div>
+            <div><small>מספר ריצה</small><strong>{dsa.run_number || "—"}</strong></div>
+          </div>
+          {dsa.run_url ? <a className="engine-action" href={dsa.run_url} target="_blank" rel="noreferrer">פתח את ריצת GitHub Actions והורד את הדוחות ({dsa.artifact_name || "analysis artifact"})</a> : <p>עדיין לא פורסמה ריצה. הפעל ריצה ראשונה ב-GitHub Actions.</p>}
+          <details className="engine-data"><summary>פתח פרטי פרסום מלאים</summary><pre>{pretty(dsa)}</pre></details>
+        </> : <p>ממתין לפרסום הדוח הראשון מענף engine-results של DSA.</p>}
+        <a className="engine-action secondary" href={DSA_ACTIONS_URL} target="_blank" rel="noreferrer">פתח את Daily Stock Analysis ב-GitHub Actions להרצה ידנית</a>
       </article>
-    </div>
-
-    <p className="hint" role="status">בדיקת האתר האחרונה: {formatDate(updatedAt)}</p>
-    <p className="hint">התוצאות הן חומר מחקר בלבד, לא המלצה אישית ולא הוראת מסחר. זמני העדכון תלויים בלוחות הזמנים ובתורים של GitHub Actions.</p>
-  </section>;
+      <p className="hint" role="status">בדיקת האתר האחרונה: {formatDate(updatedAt)}</p>
+      <p className="hint">התוצאות הן חומר מחקר בלבד, לא המלצה אישית ולא הוראת מסחר. זמני העדכון תלויים בלוחות הזמנים ובתורים של GitHub Actions.</p>
+    </section>
+  </div>;
 }
