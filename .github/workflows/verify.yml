@@ -29,6 +29,8 @@ jobs:
         run: npm run test:market
       - name: Test signal engine
         run: npm run test:signal
+      - name: Test opportunity discovery
+        run: npm run test:opportunities
       - name: Test Massive Futures provider
         run: npm run test:massive
       - name: Test macro research
