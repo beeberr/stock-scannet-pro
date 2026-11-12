@@ -826,13 +826,13 @@ export default {
       }
 
       if (url.pathname === "/api/external/alphasift/latest") {
-        const result = await readPublishedJson(alphaUrl, "AlphaSift");
+        const result = await readPublishedJson(alphaUrl);
         if (!result.ok) return Response.json({ error: result.error, status: "WAITING", sourceStatus: result.status }, { status: 503, headers: { "Cache-Control": "no-store" } });
         return Response.json(result.payload, { headers: { "Cache-Control": "no-store" } });
       }
 
       if (url.pathname === "/api/external/dsa/latest") {
-        const result = await readPublishedJson(dsaUrl, "Daily Stock Analysis");
+        const result = await readPublishedJson(dsaUrl);
         if (!result.ok) return Response.json({ error: result.error, status: "WAITING", sourceStatus: result.status }, { status: 503, headers: { "Cache-Control": "no-store" } });
         return Response.json(result.payload, { headers: { "Cache-Control": "no-store" } });
       }
