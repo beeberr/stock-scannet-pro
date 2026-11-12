@@ -36,3 +36,7 @@ Before enabling a live market-wide feed:
 7. show data delay and coverage honestly; never infer a buy/sell instruction or submit an order.
 
 No provider credentials, secrets, Cloudflare configuration, trading functionality or production deployment are changed by this foundation slice.
+
+## DSA publication audit (2026-11-12)
+
+The latest published DSA manifest reports one successful artifact. Inspection of that artifact found only a China A-share market-review report, not a US-equity opportunity report. Its run log shows the default stock list contains only 600519 and records that no LLM model was configured, so AI stock analysis was unavailable in that run. This publication must not be presented as a live US small-cap scanner or as evidence of an actionable breakout feed. Historical reports the user recalls must be retrieved and assessed individually before they are used as training/evaluation examples.
