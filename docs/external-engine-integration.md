@@ -1,54 +1,39 @@
-# External engine integration
+# GitHub Actions engine integration
 
-Stock ScanNet Pro remains the primary application. External Python services are reached through the Cloudflare Worker; credentials and service URLs are never embedded in the browser bundle.
+Stock ScanNet Pro is the presentation layer. AlphaSift and Daily Stock Analysis run as GitHub Actions jobs; no always-on Render service is required for either engine.
 
-## Cloudflare Worker secrets
+## Data flow
 
-Configure these GitHub repository secrets:
+- AlphaSift runs its scheduled/manual `Track record` workflow and publishes its current dashboard data to the `track-record` branch at `site/summary.json`.
+- Daily Stock Analysis runs its scheduled/manual `每日股票分析` workflow and publishes its latest reports plus `latest.json` to the `engine-results` branch.
+- The Stock ScanNet Pro Worker reads those public JSON files from `raw.githubusercontent.com` and exposes read-only endpoints to the UI.
+- The Worker does not proxy requests to Render, does not run Python engines, and does not accept public requests to start expensive analysis jobs.
 
-- `ALPHASIFT_BASE_URL`: public HTTPS base URL for an AlphaSift `alphasift serve` deployment (for example, `https://alphasift.example.com`).
-- `DSA_BASE_URL`: public HTTPS base URL for a running `daily_stock_analysis` API (for example, `https://dsa.example.com`).
-- `DSA_AUTH_COOKIE`: optional authenticated session cookie if the DSA deployment has `ADMIN_AUTH_ENABLED=true`. Leave unset when DSA authentication is disabled.
-- `EXTERNAL_ENGINE_ACCESS_KEY`: a long random shared key required by the Stock ScanNet Pro external-engine panel.
+## GitHub Actions workflows
 
-After adding or changing these secrets, run the `Deploy Stock Scanner to Cloudflare` workflow manually with `workflow_dispatch`, or push a commit whose message contains `[sync-secrets]`. The workflow deploys the current `main` branch and syncs only non-empty values; it does not delete existing Cloudflare secrets when a GitHub secret is absent.
+- AlphaSift: [Track record workflow](https://github.com/beeberr/alphasift/actions/workflows/track-record.yml)
+- Daily Stock Analysis: [Daily analysis workflow](https://github.com/beeberr/daily_stock_analysis/actions/workflows/00-daily-analysis.yml)
 
-## Service requirements
+Use each workflow's **Run workflow** control for an immediate manual run. Scheduled runs continue automatically. GitHub may delay scheduled workflows; this is periodic refresh, not a permanently running or tick-by-tick service.
 
-### AlphaSift
+## Stock ScanNet Pro endpoints
 
-Run AlphaSift as a separate Python service and expose its read-only `alphasift serve` API over HTTPS. The Worker currently proxies:
+- `GET /api/external/status` — latest publication status for both engines.
+- `GET /api/external/alphasift/latest` — AlphaSift `site/summary.json`.
+- `GET /api/external/dsa/latest` — DSA `latest.json` report manifest.
 
-- `GET /health`
-- `GET /overview`
-- `GET /strategies`
-- `GET /runs?limit=10`
+These are read-only endpoints. They do not need an engine access key because they return only the public, published result files. DSA report links point to the public `engine-results` branch.
 
-The official `serve` API is read-only. It does not trigger a new screening run. A separate authenticated screening runner/API is still required before Stock ScanNet Pro can launch AlphaSift strategies remotely. AlphaSift defaults to A-share strategies/data sources; US-market coverage depends on the selected strategy and configured data providers. It is not a direct gold/oil analysis engine.
+## Publishing and permissions
 
-### Daily Stock Analysis (DSA)
+The AlphaSift workflow requires its `track-record` branch to exist and writes results there using the workflow's `contents: write` permission.
 
-Run the DSA API continuously (not only as a scheduled GitHub Action). The Worker uses:
+The DSA workflow uses the built-in `GITHUB_TOKEN` with `contents: write` to publish generated report files and a versioned manifest to `engine-results`. API keys for data providers and LLMs remain in GitHub Actions Secrets/Variables and are never copied into the public results branch.
 
-- `GET /api/health`
-- `POST /api/v1/analysis/analyze` with `async_mode: true`
-- `GET /api/v1/analysis/status/{task_id}`
+## Boundaries and limitations
 
-The app accepts a stock ticker and submits an asynchronous detailed report. The DSA API may take several minutes; use the returned task ID to check status. DSA's optional admin authentication is cookie-based; if enabled, set `DSA_AUTH_COOKIE` as a Worker secret.
-
-## Worker routes
-
-All `/api/external/*` routes require the `x-engine-access-key` header to match `EXTERNAL_ENGINE_ACCESS_KEY`. Service URLs must be HTTPS.
-
-- `GET /api/external/status`
-- `GET /api/external/alphasift/overview`
-- `GET /api/external/alphasift/strategies`
-- `GET /api/external/alphasift/runs?limit=10`
-- `POST /api/external/dsa/analyze` with JSON `{"stock_code":"AAPL"}`
-- `GET /api/external/dsa/status/{task_id}`
-
-The shared access key is entered into the external-engines screen and held only in component memory; it is not saved in localStorage. Treat it as a credential and do not share it. This is a lightweight shared-key gate, not user authentication or per-user rate limiting. For public production use, add Cloudflare Access or equivalent identity/rate-limit controls before enabling expensive analysis endpoints.
-
-## Data and trading boundaries
-
-External results are displayed as research only. They do not place orders, modify demo accounts, or override existing Stock ScanNet Pro engines. Preserve each source's own timestamps, market scope, errors, and data freshness. Never interpret AlphaSift's default A-share screening output as a validated US-stock or commodity signal.
+- GitHub Actions is not a 24/7 server. The UI displays the most recently published run; refresh frequency depends on the workflow schedule and GitHub queue.
+- A manual run is started from GitHub Actions, not from an unauthenticated public website button. This avoids putting a GitHub token in the browser or exposing a workflow-dispatch credential through a public Worker.
+- AlphaSift's default screening universe is primarily Asian/A-share markets. Do not treat it as a validated US-stock or gold/oil signal without an appropriate strategy and data source.
+- DSA output depends on the stock list, provider credentials, AI credentials, and settings already configured in its GitHub repository.
+- All results are research only. No live orders or automatic trades are placed.
