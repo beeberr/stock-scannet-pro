@@ -24,9 +24,6 @@ try {
   if (!response?.ok()) throw new Error('Homepage did not return a successful response.');
   await page.locator('#root').waitFor({ state: 'visible', timeout: 15000 });
   await page.getByText('STOCK SCANNER', { exact: false }).first().waitFor({ state: 'visible', timeout: 15000 });
-
-  // The dashboard is a continuous one-page layout; validate its current
-  // primary heading and in-page anchor navigation instead of the retired tabs.
   await page.getByRole('heading', { name: 'מרכז הבקרה', exact: true }).waitFor({ state: 'visible', timeout: 10000 });
 
   const assets = await page.evaluate(() => performance.getEntriesByType('resource')
@@ -42,9 +39,26 @@ try {
   await search.fill('AAPL');
   await scanner.getByText('AAPL', { exact: true }).first().waitFor({ state: 'visible', timeout: 10000 });
 
-  if (failedAssets.length) throw new Error('Same-origin asset requests failed: ' + failedAssets.join('; '));
+  const statusResponse = await page.request.get(new URL('/api/external/status', baseUrl).toString());
+  if (!statusResponse.ok()) throw new Error('External engine status endpoint failed: HTTP ' + statusResponse.status());
+  const externalStatus = await statusResponse.json();
+  const checks = [
+    { id: 'alphasift', feed: externalStatus.alphasift, labels: { READY: 'תוצאות זמינות', WAITING: 'ממתין לפרסום', UNAVAILABLE: 'מקור לא זמין' } },
+    { id: 'dsa', feed: externalStatus.dsa, labels: { READY: 'תוצאות פורסמו', WAITING: 'ממתין לריצה ראשונה', UNAVAILABLE: 'מקור לא זמין' } }
+  ];
+  for (const check of checks) {
+    const expected = check.labels[check.feed?.status];
+    if (!expected) throw new Error('Unknown external engine status for ' + check.id + '.');
+    const selector = '#' + check.id + ' .engine-status';
+    await page.waitForFunction(({ selector, expected }) => {
+      const element = document.querySelector(selector);
+      return element?.textContent?.trim() === expected;
+    }, { selector, expected }, { timeout: 15000 });
+  }
+
+  if (failedAssets.length) throw new Error('Same-origin requests failed: ' + failedAssets.join('; '));
   if (errors.length) throw new Error('Browser JavaScript/console errors: ' + errors.join('; '));
-  console.log('PASS browser smoke test: one-page dashboard rendered, JavaScript and CSS loaded, anchor navigation and scanner search worked; no browser errors.');
+  console.log('PASS browser smoke test: one-page dashboard, navigation, scanner search and external READY/WAITING/UNAVAILABLE labels match the status API; no browser errors.');
 } finally {
   await browser.close();
 }
