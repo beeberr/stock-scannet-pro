@@ -33,6 +33,7 @@ jobs:
           npm run test:paper
           npm run test:market
           npm run test:signal
+          npm run test:opportunities
           npm run test:massive
           npm run test:universe
           npm run test:engines
