@@ -21,10 +21,6 @@ interface Env {
   EULERPOOL_API_KEY?: string;
   MARKETSTACK_API_KEY?: string;
   SEC_USER_AGENT?: string;
-  ALPHASIFT_BASE_URL?: string;
-  DSA_BASE_URL?: string;
-  DSA_AUTH_COOKIE?: string;
-  EXTERNAL_ENGINE_ACCESS_KEY?: string;
   ASSETS: { fetch(request: Request): Promise<Response> };
 }
 
@@ -794,108 +790,51 @@ export default {
     }
 
     if (url.pathname.startsWith("/api/external/")) {
-      if (request.method !== "GET" && request.method !== "POST") {
-        return Response.json({ error: "Method not allowed." }, { status: 405 });
-      }
-      const expectedAccessKey = env.EXTERNAL_ENGINE_ACCESS_KEY?.trim();
-      const suppliedAccessKey = request.headers.get("x-engine-access-key") || "";
-      if (!expectedAccessKey) {
-        return Response.json({ status: "UNAVAILABLE", error: "חסר EXTERNAL_ENGINE_ACCESS_KEY ב-Cloudflare Worker." }, { status: 503, headers: { "Cache-Control": "no-store" } });
-      }
-      if (suppliedAccessKey !== expectedAccessKey) {
-        return Response.json({ error: "נדרש מפתח גישה למנועים החיצוניים." }, { status: 401, headers: { "Cache-Control": "no-store" } });
+      if (request.method !== "GET") {
+        return Response.json({ error: "Method not allowed. GitHub Actions are triggered from GitHub, not by a public POST endpoint." }, { status: 405 });
       }
 
-      const alphaBase = env.ALPHASIFT_BASE_URL?.trim();
-      const dsaBase = env.DSA_BASE_URL?.trim();
-      const safeBase = (value: string | undefined) => {
-        if (!value) return null;
+      const alphaUrl = "https://raw.githubusercontent.com/beeberr/alphasift/track-record/site/summary.json";
+      const dsaUrl = "https://raw.githubusercontent.com/beeberr/daily_stock_analysis/engine-results/latest.json";
+      const readPublishedJson = async (source: string, engine: string) => {
         try {
-          const parsed = new URL(value);
-          return parsed.protocol === "https:" ? parsed : null;
-        } catch { return null; }
-      };
-      const alphaUrl = safeBase(alphaBase);
-      const dsaUrl = safeBase(dsaBase);
-      const headers = { Accept: "application/json" };
-
-      if (url.pathname === "/api/external/status" && request.method === "GET") {
-        const check = async (base: URL | null, path: string) => {
-          if (!base) return { status: "UNCONFIGURED" };
-          try {
-            const response = await fetch(new URL(path, base), { headers, signal: AbortSignal.timeout(8000) });
-            return { status: response.ok ? "READY" : "UNAVAILABLE", httpStatus: response.status };
-          } catch {
-            return { status: "UNAVAILABLE", error: "לא ניתן להגיע לשירות" };
+          const response = await fetch(source, {
+            headers: { Accept: "application/json" },
+            signal: AbortSignal.timeout(12000)
+          });
+          if (!response.ok) {
+            return { ok: false, status: response.status, error: response.status === 404 ? "עדיין לא פורסמו תוצאות. יש להפעיל ריצה ראשונה ב-GitHub Actions." : "לא ניתן לקרוא את קובץ התוצאות." };
           }
-        };
+          const payload = await response.json();
+          return { ok: true, status: 200, payload };
+        } catch {
+          return { ok: false, status: 502, error: "מקור התוצאות של GitHub אינו נגיש כרגע." };
+        }
+      };
+
+      if (url.pathname === "/api/external/status") {
         const [alpha, dsa] = await Promise.all([
-          check(alphaUrl, "/health"),
-          check(dsaUrl, "/api/health")
+          readPublishedJson(alphaUrl, "AlphaSift"),
+          readPublishedJson(dsaUrl, "Daily Stock Analysis")
         ]);
         return Response.json({
           fetchedAt: new Date().toISOString(),
-          alphasift: { configured: Boolean(alphaUrl), ...alpha },
-          dsa: { configured: Boolean(dsaUrl), ...dsa },
-          note: "AlphaSift serve הוא API קריאה בלבד; הפעלת סריקה דורשת runner ייעודי. DSA analysis מופעלת במצב אסינכרוני."
+          mode: "github-actions-static-results",
+          alphasift: { status: alpha.ok ? "READY" : "WAITING", updatedAt: alpha.ok ? alpha.payload.generated_at : null, error: alpha.ok ? null : alpha.error },
+          dsa: { status: dsa.ok ? "READY" : "WAITING", updatedAt: dsa.ok ? dsa.payload.updated_at : null, error: dsa.ok ? null : dsa.error }
         }, { headers: { "Cache-Control": "no-store" } });
       }
 
-      if (url.pathname.startsWith("/api/external/alphasift/") && request.method === "GET") {
-        if (!alphaUrl) return Response.json({ error: "ALPHASIFT_BASE_URL חסר או אינו HTTPS." }, { status: 503 });
-        const resource = url.pathname.slice("/api/external/alphasift/".length);
-        const allowed = new Set(["overview", "strategies", "runs"]);
-        if (!allowed.has(resource)) return Response.json({ error: "משאב AlphaSift אינו מורשה." }, { status: 404 });
-        const target = new URL("/" + resource, alphaUrl);
-        for (const [key, value] of url.searchParams) {
-          if (resource === "runs" && key === "limit") target.searchParams.set("limit", String(Math.min(50, Math.max(1, Number(value) || 10))));
-        }
-        try {
-          const response = await fetch(target, { headers, signal: AbortSignal.timeout(15000) });
-          const payload = await response.json().catch(() => ({ error: "AlphaSift החזיר תשובה שאינה JSON." }));
-          return Response.json(payload, { status: response.ok ? 200 : 502, headers: { "Cache-Control": "no-store" } });
-        } catch {
-          return Response.json({ error: "שירות AlphaSift אינו נגיש כרגע." }, { status: 502 });
-        }
+      if (url.pathname === "/api/external/alphasift/latest") {
+        const result = await readPublishedJson(alphaUrl, "AlphaSift");
+        if (!result.ok) return Response.json({ error: result.error, status: "WAITING", sourceStatus: result.status }, { status: 503, headers: { "Cache-Control": "no-store" } });
+        return Response.json(result.payload, { headers: { "Cache-Control": "no-store" } });
       }
 
-      if (url.pathname === "/api/external/dsa/analyze" && request.method === "POST") {
-        if (!dsaUrl) return Response.json({ error: "DSA_BASE_URL חסר או אינו HTTPS." }, { status: 503 });
-        const body = await request.json().catch(() => null) as { stock_code?: unknown } | null;
-        const stockCode = typeof body?.stock_code === "string" ? body.stock_code.trim().toUpperCase() : "";
-        if (!/^[A-Z0-9.\-]{1,16}$/.test(stockCode)) {
-          return Response.json({ error: "יש להזין סימול מניה תקין, למשל AAPL או MSFT." }, { status: 400 });
-        }
-        const target = new URL("/api/v1/analysis/analyze", dsaUrl);
-        const requestHeaders: Record<string, string> = { "Content-Type": "application/json", Accept: "application/json" };
-        if (env.DSA_AUTH_COOKIE?.trim()) requestHeaders.Cookie = env.DSA_AUTH_COOKIE.trim();
-        try {
-          const response = await fetch(target, {
-            method: "POST", headers: requestHeaders,
-            body: JSON.stringify({ stock_code: stockCode, report_type: "detailed", force_refresh: false, async_mode: true, notify: false }),
-            signal: AbortSignal.timeout(15000)
-          });
-          const payload = await response.json().catch(() => ({ error: "DSA החזיר תשובה שאינה JSON." }));
-          return Response.json(payload, { status: response.status, headers: { "Cache-Control": "no-store" } });
-        } catch {
-          return Response.json({ error: "לא ניתן להתחבר ל-DSA. בדוק שהשירות פעיל ונגיש." }, { status: 502 });
-        }
-      }
-
-      const taskMatch = url.pathname.match(/^\/api\/external\/dsa\/status\/([A-Za-z0-9_-]{1,128})$/);
-      if (taskMatch && request.method === "GET") {
-        if (!dsaUrl) return Response.json({ error: "DSA_BASE_URL חסר או אינו HTTPS." }, { status: 503 });
-        const requestHeaders: Record<string, string> = { Accept: "application/json" };
-        if (env.DSA_AUTH_COOKIE?.trim()) requestHeaders.Cookie = env.DSA_AUTH_COOKIE.trim();
-        try {
-          const response = await fetch(new URL("/api/v1/analysis/status/" + encodeURIComponent(taskMatch[1]), dsaUrl), {
-            headers: requestHeaders, signal: AbortSignal.timeout(10000)
-          });
-          const payload = await response.json().catch(() => ({ error: "DSA החזיר תשובה שאינה JSON." }));
-          return Response.json(payload, { status: response.ok ? 200 : response.status, headers: { "Cache-Control": "no-store" } });
-        } catch {
-          return Response.json({ error: "לא ניתן לקבל סטטוס משימת DSA." }, { status: 502 });
-        }
+      if (url.pathname === "/api/external/dsa/latest") {
+        const result = await readPublishedJson(dsaUrl, "Daily Stock Analysis");
+        if (!result.ok) return Response.json({ error: result.error, status: "WAITING", sourceStatus: result.status }, { status: 503, headers: { "Cache-Control": "no-store" } });
+        return Response.json(result.payload, { headers: { "Cache-Control": "no-store" } });
       }
 
       return Response.json({ error: "נתיב מנועים חיצוניים לא נמצא." }, { status: 404 });
@@ -916,10 +855,7 @@ export default {
             alphaVantage: env.ALPHA_VANTAGE_API_KEY?.trim() ? "configured" : "missing-key",
             eulerpool: env.EULERPOOL_API_KEY?.trim() ? "configured" : "missing-key",
             marketstack: env.MARKETSTACK_API_KEY?.trim() ? "configured" : "missing-key",
-            secEdgar: env.SEC_USER_AGENT?.trim() ? "configured" : "missing-user-agent",
-            alphaSift: env.ALPHASIFT_BASE_URL?.trim() ? "configured" : "missing-url",
-            dailyStockAnalysis: env.DSA_BASE_URL?.trim() ? "configured" : "missing-url",
-            externalEngineAccess: env.EXTERNAL_ENGINE_ACCESS_KEY?.trim() ? "configured" : "missing-key"
+            secEdgar: env.SEC_USER_AGENT?.trim() ? "configured" : "missing-user-agent"
           },
           providerSemantics: "configured means a non-empty Worker secret binding only; upstream credentials are verified only by successful provider data responses."
         },
