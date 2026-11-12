@@ -16,6 +16,7 @@ jobs:
       - run: npm run test:paper
       - run: npm run test:market
       - run: npm run test:signal
+      - run: npm run test:opportunities
       - run: npm run test:massive
       - run: npm run test:universe
       - run: npm run test:engines

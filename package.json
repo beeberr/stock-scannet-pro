@@ -10,6 +10,7 @@
     "test:paper": "node scripts/test-paper-trading.mjs",
     "test:market": "node scripts/test-market-analysis.mjs",
     "test:signal": "node scripts/test-signal-engine.mjs",
+    "test:opportunities": "node scripts/test-opportunity-engine.mjs",
     "test:massive": "node scripts/test-massive-futures.mjs",
     "test:universe": "node scripts/test-asset-universe.mjs",
     "test:engines": "node scripts/test-research-engines.mjs",
