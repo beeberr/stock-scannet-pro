@@ -12,6 +12,7 @@ Hebrew RTL investment research and paper-trading workspace.
 - Dedicated forecast journal and public-disclosure monitoring screens.
 - First standalone technical-analysis module: validated OHLCV candles, SMA20/SMA50, RSI14, ATR14 and MACD.
 - First scored long-only signal engine: trend, RSI, MACD, volume and candle confirmation; ATR-based stop/target levels; configurable risk budget and position sizing; explicit exit-rule evaluation. It produces research candidates only and never submits orders.
+- First intraday opportunity-discovery core: ranks fresh 1-minute/5-minute candles for breakouts, VWAP, short-term trend, estimated relative volume and liquidity; rejects stale or incomplete data rather than inventing a signal. Provider integration is not active yet. See docs/opportunity-discovery-architecture.md.
 - Regression tests for technical indicators, insufficient history, malformed candles, chronological ordering, signal scoring, position sizing and exit rules.
 - Explicit warning labels: no live quotes, no fabricated scores, and no implied recommendations.
 
