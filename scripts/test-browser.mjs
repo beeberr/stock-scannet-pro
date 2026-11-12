@@ -32,8 +32,8 @@ try {
   const assets = await page.evaluate(() => performance.getEntriesByType('resource')
     .map(entry => entry.name)
     .filter(url => url.startsWith(location.origin)));
-  if (!assets.some(url => /\\.js(?:\\?|$)/.test(url))) throw new Error('No application JavaScript bundle was loaded.');
-  if (!assets.some(url => /\\.css(?:\\?|$)/.test(url))) throw new Error('No application CSS bundle was loaded.');
+  if (!assets.some(url => /\.js(?:\?|$)/.test(url))) throw new Error('No application JavaScript bundle was loaded.');
+  if (!assets.some(url => /\.css(?:\?|$)/.test(url))) throw new Error('No application CSS bundle was loaded.');
 
   await page.getByRole('link', { name: 'סורק', exact: true }).click();
   const scanner = page.locator('#scanner');
