@@ -81,12 +81,20 @@ jobs:
           if (health) {
             console.log("HEALTH " + health.status + " · assets=" + health.assets + " · version=" + health.version);
             console.log("PROVIDER_BINDINGS " + JSON.stringify(health.providers || {}) + " · configured means non-empty secret binding only, not successful validation.");
+            if (health.status !== "ok" || health.assets !== "bound") failures.push("/api/health returned an unhealthy Worker or unbound static assets");
           }
 
           const quotes = await get("/api/quotes");
           if (quotes) {
             console.log("QUOTES " + quotes.status + " · " + quotes.available + "/" + quotes.total + " · sources=" + quotes.source + " · fetchedAt=" + quotes.fetchedAt);
             for (const [symbol,row] of list(quotes.data)) console.log("  " + symbol + " " + (row.status || "READY") + " · " + (row.source || "unknown") + " · " + (row.datetime || "n/a") + " · " + ageText(row.datetime) + (row.error ? " · " + row.error : ""));
+            if (quotes.engine !== "quotes" || !["READY", "PARTIAL", "UNAVAILABLE"].includes(quotes.status) || !quotes.data || typeof quotes.available !== "number" || typeof quotes.total !== "number") {
+              failures.push("/api/quotes response is malformed");
+            } else {
+              const validQuotes = list(quotes.data).filter(([,row]) => row.status !== "UNAVAILABLE" && Number.isFinite(Number(row.close)) && Number(row.close) > 0).length;
+              const expectedQuotes = validQuotes === quotes.total ? "READY" : validQuotes > 0 ? "PARTIAL" : "UNAVAILABLE";
+              if (quotes.status !== expectedQuotes || quotes.available !== validQuotes) failures.push("/api/quotes status does not match valid quote rows");
+            }
           }
 
           const engines = await get("/api/engines?symbols=AAPL,MSFT,NVDA,XLE");
@@ -163,9 +171,25 @@ jobs:
             }
           }
 
+ 
+          const universe = await get("/api/universe");
+          if (universe) {
+            const assets = Array.isArray(universe.assets) ? universe.assets : [];
+            const symbols = assets.map(asset => asset?.symbol).filter(symbol => typeof symbol === "string" && symbol.length > 0);
+            const shapeValid = Number.isInteger(universe.configuredCount) &&
+              Number.isInteger(universe.maximum) &&
+              Number.isInteger(universe.dynamicSlots) &&
+              assets.length === universe.configuredCount &&
+              universe.maximum === universe.configuredCount + universe.dynamicSlots &&
+              symbols.length === assets.length &&
+              new Set(symbols).size === assets.length;
+            if (!shapeValid) failures.push("/api/universe asset counts, capacity, or symbol uniqueness are inconsistent");
+            console.log("UNIVERSE " + assets.length + "/" + (universe.maximum ?? "n/a") + " configured · " + (universe.dynamicSlots ?? "n/a") + " dynamic slots · fetchedAt=" + (universe.fetchedAt || "n/a"));
+          }
+
           if (failures.length) {
             console.error("MONITOR FAILURES: " + failures.join(" | "));
             process.exit(1);
           }
-          console.log("MONITOR PASS: live site, health, quotes, technical/momentum, value, macro, indices, commodities, news and disclosures checked.");
+          console.log("MONITOR PASS: live site, health, quotes, technical/momentum, value, macro, indices, commodities, news, disclosures and universe checked.");
           NODE
