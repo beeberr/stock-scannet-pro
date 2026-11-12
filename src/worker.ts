@@ -796,7 +796,7 @@ export default {
 
       const alphaUrl = "https://raw.githubusercontent.com/beeberr/alphasift/track-record/site/summary.json";
       const dsaUrl = "https://raw.githubusercontent.com/beeberr/daily_stock_analysis/engine-results/latest.json";
-      const readPublishedJson = async (source: string, engine: string) => {
+      const readPublishedJson = async (source: string) => {
         try {
           const response = await fetch(source, {
             headers: { Accept: "application/json" },
@@ -814,8 +814,8 @@ export default {
 
       if (url.pathname === "/api/external/status") {
         const [alpha, dsa] = await Promise.all([
-          readPublishedJson(alphaUrl, "AlphaSift"),
-          readPublishedJson(dsaUrl, "Daily Stock Analysis")
+          readPublishedJson(alphaUrl),
+          readPublishedJson(dsaUrl)
         ]);
         return Response.json({
           fetchedAt: new Date().toISOString(),
