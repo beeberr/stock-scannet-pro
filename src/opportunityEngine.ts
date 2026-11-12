@@ -106,6 +106,7 @@ export function assessIntradayOpportunity(
   validateInput(input);
   const symbol = input.symbol.trim().toUpperCase();
   const now = options.now ?? Date.now();
+  if (!Number.isFinite(now)) throw new Error('זמן הבדיקה אינו תקין');
   const fetchedAtMs = Date.parse(input.fetchedAt);
   const latest = input.candles[input.candles.length - 1] ?? null;
   const asOfMs = latest ? Date.parse(latest.time) : null;
@@ -131,7 +132,8 @@ export function assessIntradayOpportunity(
 
   const reasons: string[] = [];
   const limitations: string[] = [];
-  if (now - fetchedAtMs > maxAgeMs || now - (asOfMs ?? 0) > maxAgeMs) {
+  if (fetchedAtMs > now + 60_000 || (asOfMs ?? 0) > now + 60_000 ||
+      now - fetchedAtMs > maxAgeMs || now - (asOfMs ?? 0) > maxAgeMs) {
     return {
       ...base, status: 'UNAVAILABLE', signal: 'STALE', score: null,
       price: latest.close, asOf: latest.time, breakoutLevel: null, vwap: null,
