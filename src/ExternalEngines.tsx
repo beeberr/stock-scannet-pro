@@ -16,14 +16,15 @@ type DsaManifest = {
   run_id?: string;
   run_number?: string;
   status?: string;
-  files?: Array<{ name: string; path: string; size_bytes?: number }>;
+  report_count?: number;
+  artifact_name?: string;
+  run_url?: string;
 };
 
 const ALPHA_SUMMARY_URL = "/api/external/alphasift/latest";
 const DSA_LATEST_URL = "/api/external/dsa/latest";
 const ALPHA_ACTIONS_URL = "https://github.com/beeberr/alphasift/actions/workflows/track-record.yml";
 const DSA_ACTIONS_URL = "https://github.com/beeberr/daily_stock_analysis/actions/workflows/00-daily-analysis.yml";
-const DSA_FILE_BASE = "https://raw.githubusercontent.com/beeberr/daily_stock_analysis/engine-results/";
 
 async function readJson<T>(path: string): Promise<T> {
   const response = await fetch(path, { headers: { Accept: "application/json" }, cache: "no-store" });
@@ -101,7 +102,8 @@ export default function ExternalEngines() {
           <p><b>עודכן:</b> {formatDate(dsa.updated_at)}</p>
           <p><b>מצב הריצה האחרונה:</b> {dsa.status || "לא ידוע"}</p>
           <p><b>מספר ריצה:</b> {dsa.run_number || "—"}</p>
-          {dsa.files?.length ? <ul>{dsa.files.map(file => <li key={file.path}><a href={DSA_FILE_BASE + file.path} target="_blank" rel="noreferrer">{file.name}</a> <small>({Math.round((file.size_bytes || 0) / 1024)} KB)</small></li>)}</ul> : <small>עדיין לא פורסמו דוחות. הפעל ריצה ראשונה ב-GitHub Actions.</small>}
+          <p><b>מספר דוחות שנוצרו:</b> {dsa.report_count ?? "—"}</p>
+          {dsa.run_url ? <p><a className="link" href={dsa.run_url} target="_blank" rel="noreferrer">פתיחת ריצת GitHub Actions והורדת הדוח ({dsa.artifact_name || "analysis artifact"})</a></p> : <small>עדיין לא פורסמה ריצה. הפעל ריצה ראשונה ב-GitHub Actions.</small>}
           <details><summary>הצג נתוני פרסום</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere",maxHeight:300,overflow:"auto"}}>{pretty(dsa)}</pre></details>
         </>}
         <a className="link" href={DSA_ACTIONS_URL} target="_blank" rel="noreferrer">פתיחת DSA ב-GitHub Actions להרצה ידנית</a>
