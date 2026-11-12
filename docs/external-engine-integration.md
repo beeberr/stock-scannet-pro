@@ -5,7 +5,7 @@ Stock ScanNet Pro is the presentation layer. AlphaSift and Daily Stock Analysis 
 ## Data flow
 
 - AlphaSift runs its scheduled/manual `Track record` workflow and publishes its current dashboard data to the `track-record` branch at `site/summary.json`.
-- Daily Stock Analysis runs its scheduled/manual `每日股票分析` workflow and publishes its latest reports plus `latest.json` to the `engine-results` branch.
+- Daily Stock Analysis runs its scheduled/manual `每日股票分析` workflow and publishes a small `latest.json` status manifest to the `engine-results` branch. Full reports remain in GitHub Actions artifacts and are not copied into the public branch.
 - The Stock ScanNet Pro Worker reads those public JSON files from `raw.githubusercontent.com` and exposes read-only endpoints to the UI.
 - The Worker does not proxy requests to Render, does not run Python engines, and does not accept public requests to start expensive analysis jobs.
 
@@ -28,7 +28,7 @@ These are read-only endpoints. They do not need an engine access key because the
 
 The AlphaSift workflow requires its `track-record` branch to exist and writes results there using the workflow's `contents: write` permission.
 
-The DSA workflow uses the built-in `GITHUB_TOKEN` with `contents: write` to publish generated report files and a versioned manifest to `engine-results`. API keys for data providers and LLMs remain in GitHub Actions Secrets/Variables and are never copied into the public results branch.
+The DSA workflow uses the built-in `GITHUB_TOKEN` with `contents: write` to publish only run metadata (timestamp, status, run URL, and report count) to `engine-results`. Full reports remain in GitHub Actions artifacts for 30 days and are not exposed in the public branch. API keys for data providers and LLMs remain in GitHub Actions Secrets/Variables.
 
 ## Boundaries and limitations
 
