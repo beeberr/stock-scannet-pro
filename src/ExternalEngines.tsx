@@ -68,10 +68,6 @@ export default function ExternalEngines() {
 
   useEffect(() => { void refresh(); }, [refresh]);
 
-  const latestRows = alpha?.latest ? Object.entries(alpha.latest).flatMap(([market, rows]) =>
-    rows.map((row, index) => ({ market, index, ...row }))
-  ) : [];
-
   return <section>
     <div className="sect">
       <div>
