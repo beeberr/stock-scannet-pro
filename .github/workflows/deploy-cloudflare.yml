@@ -211,6 +211,12 @@ jobs:
           }
           console.log("PASS /api/health: Worker and static assets are available.");
 
+          const external = await getJson("/api/external/status");
+          if (external.mode !== "github-actions-static-results" || !external.alphasift || !external.dsa) {
+            throw new Error("/api/external/status: GitHub Actions result-feed contract is missing or malformed.");
+          }
+          console.log(`PASS /api/external/status: Actions-only feeds are active; AlphaSift ${external.alphasift.status}; DSA ${external.dsa.status}.`);
+
           const macro = await getJson("/api/macro");
           const macroKeys = ["us_10y", "usd_broad", "crude_inventory", "wti_spot"];
           if (macro.engine !== "macro" || !["READY", "PARTIAL", "UNAVAILABLE"].includes(macro.status) || !["READY", "PARTIAL", "UNAVAILABLE"].includes(macro.seriesStatus) || !macro.series || macroKeys.some(key => !macro.series[key] || macro.series[key].key !== key || !macro.series[key].status)) throw new Error("/api/macro: series/status fields are missing or malformed.");
