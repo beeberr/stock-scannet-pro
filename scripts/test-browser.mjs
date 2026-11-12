@@ -24,7 +24,7 @@ try {
   if (!response?.ok()) throw new Error('Homepage did not return a successful response.');
   await page.locator('#root').waitFor({ state: 'visible', timeout: 15000 });
   await page.getByText('STOCK SCANNER', { exact: false }).first().waitFor({ state: 'visible', timeout: 15000 });
-  await page.getByRole('heading', { name: 'סקירה' }).waitFor({ state: 'visible', timeout: 10000 });
+  await page.getByRole('heading', { name: 'מרכז הבקרה', exact: true }).waitFor({ state: 'visible', timeout: 10000 });
 
   const assets = await page.evaluate(() => performance.getEntriesByType('resource')
     .map(entry => entry.name)
@@ -32,15 +32,33 @@ try {
   if (!assets.some(url => /\.js(?:\?|$)/.test(url))) throw new Error('No application JavaScript bundle was loaded.');
   if (!assets.some(url => /\.css(?:\?|$)/.test(url))) throw new Error('No application CSS bundle was loaded.');
 
-  await page.getByRole('button', { name: /סורק/ }).first().click();
-  await page.getByRole('heading', { name: 'סורק', exact: true }).waitFor({ state: 'visible', timeout: 10000 });
-  const search = page.getByPlaceholder('חפש לפי שם או סימול');
+  await page.getByRole('link', { name: 'סורק', exact: true }).click();
+  const scanner = page.locator('#scanner');
+  await scanner.getByRole('heading', { name: 'סורק נכסים', exact: true }).waitFor({ state: 'visible', timeout: 10000 });
+  const search = scanner.getByPlaceholder('חפש לפי שם או סימול');
   await search.fill('AAPL');
-  await page.getByText('AAPL', { exact: true }).first().waitFor({ state: 'visible', timeout: 10000 });
+  await scanner.getByText('AAPL', { exact: true }).first().waitFor({ state: 'visible', timeout: 10000 });
 
-  if (failedAssets.length) throw new Error('Same-origin asset requests failed: ' + failedAssets.join('; '));
+  const statusResponse = await page.request.get(new URL('/api/external/status', baseUrl).toString());
+  if (!statusResponse.ok()) throw new Error('External engine status endpoint failed: HTTP ' + statusResponse.status());
+  const externalStatus = await statusResponse.json();
+  const checks = [
+    { id: 'alphasift', feed: externalStatus.alphasift, labels: { READY: 'תוצאות זמינות', WAITING: 'ממתין לפרסום', UNAVAILABLE: 'מקור לא זמין' } },
+    { id: 'dsa', feed: externalStatus.dsa, labels: { READY: 'תוצאות פורסמו', WAITING: 'ממתין לריצה ראשונה', UNAVAILABLE: 'מקור לא זמין' } }
+  ];
+  for (const check of checks) {
+    const expected = check.labels[check.feed?.status];
+    if (!expected) throw new Error('Unknown external engine status for ' + check.id + '.');
+    const selector = '#' + check.id + ' .engine-status';
+    await page.waitForFunction(({ selector, expected }) => {
+      const element = document.querySelector(selector);
+      return element?.textContent?.trim() === expected;
+    }, { selector, expected }, { timeout: 15000 });
+  }
+
+  if (failedAssets.length) throw new Error('Same-origin requests failed: ' + failedAssets.join('; '));
   if (errors.length) throw new Error('Browser JavaScript/console errors: ' + errors.join('; '));
-  console.log('PASS browser smoke test: React UI rendered, JavaScript and CSS loaded, navigation and scanner search worked; no browser errors.');
+  console.log('PASS browser smoke test: one-page dashboard, navigation, scanner search and external READY/WAITING/UNAVAILABLE labels match the status API; no browser errors.');
 } finally {
   await browser.close();
 }
