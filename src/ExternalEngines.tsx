@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 type AlphaSummary = {
   generated_at?: string;
   run_count?: number;
-  markets?: string[];
+  markets?: Array<string | { id?: string; name?: string; benchmark?: string }>;
   scorecard?: Array<Record<string, unknown>>;
   latest?: Record<string, Array<Record<string, unknown>>>;
   [key: string]: unknown;
@@ -89,7 +89,7 @@ export default function ExternalEngines() {
         {alphaError ? <small>{alphaError}</small> : alpha && <>
           <p><b>עודכן:</b> {formatDate(alpha.generated_at)}</p>
           <p><b>מספר ריצות שנשמרו:</b> {alpha.run_count ?? "—"}</p>
-          <p><b>שווקים:</b> {Array.isArray(alpha.markets) ? alpha.markets.join(", ") : "—"}</p>
+          <p><b>שווקים:</b> {Array.isArray(alpha.markets) ? alpha.markets.map(market => typeof market === "string" ? market : market.name || market.id || "שוק").join(", ") : "—"}</p>
           <details><summary>הצג נתוני סריקה מלאים</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere",maxHeight:360,overflow:"auto"}}>{pretty(alpha)}</pre></details>
         </>}
         <a className="link" href={ALPHA_ACTIONS_URL} target="_blank" rel="noreferrer">פתיחת AlphaSift ב-GitHub Actions להרצה ידנית</a>
