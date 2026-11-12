@@ -45,6 +45,10 @@ try {
   assert.equal(stale.signal,'STALE');
   assert.equal(stale.score,null);
 
+  const future = assessIntradayOpportunity({...input,fetchedAt:new Date(now+5*60_000).toISOString()},{now});
+  assert.equal(future.signal,'STALE');
+  assert.equal(future.score,null);
+
   const missingVolume = assessIntradayOpportunity({...input,sessionVolume:undefined,sessionProgress:undefined},{now});
   assert.equal(missingVolume.status,'PARTIAL');
   assert.notEqual(missingVolume.signal,'BREAKOUT');
