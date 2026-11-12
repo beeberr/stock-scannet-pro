@@ -327,7 +327,7 @@ jobs:
           } else if (commodities.status === "UNAVAILABLE") {
             console.warn("WARN /api/commodities: Massive is configured but currently has no valid cached/current commodity prices. Deployment can proceed; the commodity engine remains unavailable.");
           } else {
-            console.log("PASS /api/commodities: all four commodity prices returned from Massive Futures.");
+            console.log(`/api/commodities: ${commodities.status} · ${availableCommodities}/4 valid prices · Massive Futures.`);
           }
           console.log("API integration smoke tests passed. Provider outages are reported as degraded data, not deployment failures.");
           NODE
