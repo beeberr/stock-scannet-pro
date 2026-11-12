@@ -820,20 +820,20 @@ export default {
         return Response.json({
           fetchedAt: new Date().toISOString(),
           mode: "github-actions-static-results",
-          alphasift: { status: alpha.ok ? "READY" : "WAITING", updatedAt: alpha.ok ? alpha.payload.generated_at : null, error: alpha.ok ? null : alpha.error },
-          dsa: { status: dsa.ok ? "READY" : "WAITING", updatedAt: dsa.ok ? dsa.payload.updated_at : null, error: dsa.ok ? null : dsa.error }
+          alphasift: { status: alpha.ok ? "READY" : alpha.status === 404 ? "WAITING" : "UNAVAILABLE", updatedAt: alpha.ok ? alpha.payload.generated_at : null, error: alpha.ok ? null : alpha.error },
+          dsa: { status: dsa.ok ? "READY" : dsa.status === 404 ? "WAITING" : "UNAVAILABLE", updatedAt: dsa.ok ? dsa.payload.updated_at : null, error: dsa.ok ? null : dsa.error }
         }, { headers: { "Cache-Control": "no-store" } });
       }
 
       if (url.pathname === "/api/external/alphasift/latest") {
         const result = await readPublishedJson(alphaUrl);
-        if (!result.ok) return Response.json({ error: result.error, status: "WAITING", sourceStatus: result.status }, { status: 503, headers: { "Cache-Control": "no-store" } });
+        if (!result.ok) return Response.json({ error: result.error, status: result.status === 404 ? "WAITING" : "UNAVAILABLE", sourceStatus: result.status }, { status: 503, headers: { "Cache-Control": "no-store" } });
         return Response.json(result.payload, { headers: { "Cache-Control": "no-store" } });
       }
 
       if (url.pathname === "/api/external/dsa/latest") {
         const result = await readPublishedJson(dsaUrl);
-        if (!result.ok) return Response.json({ error: result.error, status: "WAITING", sourceStatus: result.status }, { status: 503, headers: { "Cache-Control": "no-store" } });
+        if (!result.ok) return Response.json({ error: result.error, status: result.status === 404 ? "WAITING" : "UNAVAILABLE", sourceStatus: result.status }, { status: 503, headers: { "Cache-Control": "no-store" } });
         return Response.json(result.payload, { headers: { "Cache-Control": "no-store" } });
       }
 
