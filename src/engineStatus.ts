@@ -65,3 +65,19 @@ export function financialStatementFreshness(
  const ageDays=Math.max(0,(now-timestamp)/86400000);
  return {stale:ageDays>maxAgeDays,ageDays:Math.floor(ageDays)};
 }
+
+export function statusForDsaPublishedFeed(payload: unknown): { status: 'READY' | 'UNAVAILABLE'; error: string | null } {
+ if(!payload || typeof payload !== 'object' || Array.isArray(payload)){
+  return {status:'UNAVAILABLE',error:'קובץ התוצאות של Daily Stock Analysis אינו תקין.'};
+ }
+ const manifest=payload as Record<string,unknown>;
+ if(manifest.status!=='success'){
+  return {status:'UNAVAILABLE',error:'הריצה האחרונה של Daily Stock Analysis לא הסתיימה בהצלחה (status='+String(manifest.status||'unknown')+').'};
+ }
+ const reportCount=typeof manifest.report_count==='number'?manifest.report_count:Number(manifest.report_count);
+ if(!Number.isFinite(reportCount)||reportCount<=0){
+  const countLabel=Number.isFinite(reportCount)?String(reportCount):'לא ידוע';
+  return {status:'UNAVAILABLE',error:'הריצה האחרונה של Daily Stock Analysis הסתיימה ללא דוחות (report_count='+countLabel+').'};
+ }
+ return {status:'READY',error:null};
+}

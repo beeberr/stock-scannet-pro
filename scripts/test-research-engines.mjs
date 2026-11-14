@@ -6,7 +6,7 @@ const compile=spawnSync('npx',['tsc','src/researchEngines.ts','src/engineStatus.
 if(compile.status!==0){process.stderr.write(compile.stdout+compile.stderr);process.exit(compile.status??1);}
 try{
  const {analyzeMomentum}=await import(new URL('../'+out+'/researchEngines.js',import.meta.url));
- const {summarizeStatus,statusForTechnicalData,statusForMacroSeries,statusForValueData,statusForCommodityData,statusForIndicesPayload,statusForQuotesPayload,statusForNewsPayload,statusForDisclosureData,technicalMomentumRowStatus,financialStatementFreshness}=await import(new URL('../'+out+'/engineStatus.js',import.meta.url));
+ const {summarizeStatus,statusForTechnicalData,statusForMacroSeries,statusForValueData,statusForCommodityData,statusForIndicesPayload,statusForQuotesPayload,statusForNewsPayload,statusForDisclosureData,technicalMomentumRowStatus,financialStatementFreshness,statusForDsaPublishedFeed}=await import(new URL('../'+out+'/engineStatus.js',import.meta.url));
  const candles=Array.from({length:25},(_,i)=>({time:new Date(Date.UTC(2026,0,i+1)).toISOString(),open:100+i,high:102+i,low:99+i,close:101+i,volume:1000}));
  candles[candles.length-1]={...candles[candles.length-1],open:129,high:131,low:128,close:130};
  const result=analyzeMomentum(candles);
@@ -47,5 +47,12 @@ try{
  assert.equal(statusForDisclosureData(completeDisclosureRows),'PARTIAL');
  assert.equal(statusForDisclosureData(completeDisclosureRows,true),'READY');
  assert.equal(statusForDisclosureData({AAPL:{status:'READY'},MSFT:{status:'UNAVAILABLE'}}),'PARTIAL');
+ const dsaReady=statusForDsaPublishedFeed({status:'success',report_count:2});
+ assert.deepEqual(dsaReady,{status:'READY',error:null});
+ const dsaEmpty=statusForDsaPublishedFeed({status:'success',report_count:0});
+ assert.equal(dsaEmpty.status,'UNAVAILABLE');
+ assert.match(dsaEmpty.error,/ללא דוחות/);
+ assert.equal(statusForDsaPublishedFeed({status:'failure',report_count:2}).status,'UNAVAILABLE');
+ assert.equal(statusForDsaPublishedFeed(null).status,'UNAVAILABLE');
  console.log('PASS: eight-engine READY/PARTIAL/UNAVAILABLE classification, including stale and partial data');
 }finally{rmSync(out,{recursive:true,force:true});}
