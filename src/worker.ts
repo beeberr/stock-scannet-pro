@@ -1,5 +1,5 @@
 import { analyzeTechnical } from './marketAnalysis.js';
-import { summarizeStatus, technicalMomentumRowStatus, financialStatementFreshness } from './engineStatus.js';
+import { summarizeStatus, technicalMomentumRowStatus, financialStatementFreshness, statusForDsaPublishedFeed } from './engineStatus.js';
 import { analyzeMomentum } from './researchEngines.js';
 import { assessLongSetup } from './signalEngine.js';
 import { ASSET_UNIVERSE, MAX_TRACKED_ASSETS, DYNAMIC_WATCH_SLOTS, CURRENTLY_CONNECTED_SYMBOLS } from './assetUniverse.js';
@@ -817,11 +817,16 @@ export default {
           readPublishedJson(alphaUrl),
           readPublishedJson(dsaUrl)
         ]);
+        const dsaFeed = dsa.ok ? statusForDsaPublishedFeed(dsa.payload) : null;
         return Response.json({
           fetchedAt: new Date().toISOString(),
           mode: "github-actions-static-results",
           alphasift: { status: alpha.ok ? "READY" : alpha.status === 404 ? "WAITING" : "UNAVAILABLE", updatedAt: alpha.ok ? alpha.payload.generated_at : null, error: alpha.ok ? null : alpha.error },
-          dsa: { status: dsa.ok ? "READY" : dsa.status === 404 ? "WAITING" : "UNAVAILABLE", updatedAt: dsa.ok ? dsa.payload.updated_at : null, error: dsa.ok ? null : dsa.error }
+          dsa: {
+            status: dsa.ok ? dsaFeed!.status : dsa.status === 404 ? "WAITING" : "UNAVAILABLE",
+            updatedAt: dsa.ok ? dsa.payload.updated_at : null,
+            error: dsa.ok ? dsaFeed!.error : dsa.error
+          }
         }, { headers: { "Cache-Control": "no-store" } });
       }
 
