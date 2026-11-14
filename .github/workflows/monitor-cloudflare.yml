@@ -163,9 +163,34 @@ jobs:
             }
           }
 
+          const universe = await get("/api/universe");
+          if (universe) {
+            const assets = Array.isArray(universe.assets) ? universe.assets : [];
+            const symbols = assets.map(asset => asset?.symbol).filter(Boolean);
+            const uniqueCount = new Set(symbols).size;
+            const valid = universe.configuredCount === assets.length
+              && universe.dynamicSlots === 5
+              && universe.maximum === 50
+              && assets.length === 45
+              && uniqueCount === assets.length;
+            if (!valid) failures.push("/api/universe registry counts or duplicate symbols mismatch");
+            console.log("UNIVERSE " + (valid ? "READY" : "PARTIAL") + " · " + assets.length + " configured · " + (universe.dynamicSlots ?? "n/a") + " reserved · max=" + (universe.maximum ?? "n/a") + " · connected=" + (universe.connectedCount ?? (universe.connectedSymbols || []).length) + " · symbols=" + (universe.connectedSymbols || []).join(","));
+          }
+
+          const external = await get("/api/external/status");
+          if (external) {
+            for (const [name, feed] of [["AlphaSift", external.alphasift], ["DSA", external.dsa]]) {
+              if (!feed || !["READY", "WAITING", "UNAVAILABLE"].includes(feed.status)) {
+                failures.push("/api/external/status " + name + " has an invalid status");
+                continue;
+              }
+              console.log("EXTERNAL " + name + " " + feed.status + " · updatedAt=" + (feed.updatedAt || "n/a") + (feed.error ? " · " + feed.error : ""));
+            }
+          }
+
           if (failures.length) {
             console.error("MONITOR FAILURES: " + failures.join(" | "));
             process.exit(1);
           }
-          console.log("MONITOR PASS: live site, health, quotes, technical/momentum, value, macro, indices, commodities, news and disclosures checked.");
+          console.log("MONITOR PASS: live site, health, quotes, technical/momentum, value, macro, indices, commodities, news, disclosures, universe and external feeds checked.");
           NODE
